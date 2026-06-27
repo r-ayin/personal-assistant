@@ -15,7 +15,10 @@ from . import config
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS segments(
   id TEXT PRIMARY KEY, source_file TEXT, start_sec REAL, end_sec REAL,
-  text TEXT, speaker TEXT, language TEXT, created_at TEXT, processed INT DEFAULT 0);
+  text TEXT, speaker TEXT, language TEXT,
+  created_at TEXT,  -- 记录时间(系统收文/ingest 时刻)，非真实发生时间(无设备时间戳则不可得)
+  processed INT DEFAULT 0,
+  time_kind TEXT DEFAULT 'received');  -- 'received'=记录时间 | 'occurred'=真实发生时间(设备时间戳/强制对齐提供)
 CREATE TABLE IF NOT EXISTS ingested_files(
   source_file TEXT PRIMARY KEY, ingested_at TEXT, n_segments INT);
 CREATE TABLE IF NOT EXISTS memories(

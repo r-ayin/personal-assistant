@@ -26,7 +26,7 @@ development（用户 2026-06-28 直导式构建，`planning/status.json` locked=
 - `cli.py` — 子命令：pipeline / distill / chat / proactive / calendar / reminders / speakers / verify / status / serve / test。
 
 ## 反幻觉与真实时间（核心约束）
-- **真实时间戳**：所有 created_at/when/chat_log 用 `storage.now_iso()`=系统本地实时；temporal 解析的 reference=真实 `datetime.now()`。
+- **时间戳=记录时间(收文时刻)，非真实发生时间**：段 `created_at` = 系统收到转录的 `now()`，`time_kind='received'` 显式标注。设备转录**无时间戳**，真实发生时间不可得（需设备时间戳或音频强制对齐 WhisperX，届时 `time_kind='occurred'`）。`start_sec/end_sec` 仅录音内偏移，不冒充墙钟。chat_log 同理用 `now()`。temporal 解析 reference=该记录时间。
 - **日历时间真实**：when_dt **只用 `temporal.resolve`（确定性规则）**，**禁止 LLM 编造日期**（无 LLM 日期兜底）。LLM 只抽 when_raw 短语。
 - **脚本复查**：每次 ingest 后 `verify.run_all()` 自动跑——重解 when_dt、溯源 when_raw/记忆到源转录、不落地即删。`verify.assert_no_hallucination()` 供测试/CLI 断言。
 
