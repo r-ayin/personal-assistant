@@ -22,10 +22,11 @@ class Segment:
     speaker: str = "user"
     language: str = "zh"
     created_at: str = ""
+    time_kind: str = "received"   # 'received'=记录时间 | 'occurred'=真实发生时间
 
     def to_tuple(self):
         return (self.id, self.source_file, self.start_sec, self.end_sec,
-                self.text, self.speaker, self.language, self.created_at, 0)
+                self.text, self.speaker, self.language, self.created_at, 0, self.time_kind)
 
 
 class Transcriber:
@@ -117,31 +118,25 @@ class IngestionPipeline:
         return conn
 
     def _init_db(self):
-        with self._conn() as c:
-            c.executescript("""
-            CREATE TABLE IF NOT EXISTS segments(
-              id TEXT PRIMARY KEY, source_file TEXT, start_sec REAL, end_sec REAL,
-              text TEXT, speaker TEXT, language TEXT, created_at TEXT, processed INT DEFAULT 0);
-            CREATE TABLE IF NOT EXISTS ingested_files(
-              source_file TEXT PRIMARY KEY, ingested_at TEXT, n_segments INT);
-            """)
-            c.commit()
+        # schema 统一由 storage.connect() 创建（含 time_kind），不本地建表避免列不一致
+        from . import storage
+        storage.connect()
 
     def _already(self, c, name: str) -> bool:
         row = c.execute("SELECT 1 FROM ingested_files WHERE source_file=?", (name,)).fetchone()
         return row is not None
 
     def process_file(self, audio_path: str) -> int:
-        from datetime import datetime
+        from . import storage
         name = Path(audio_path).name
-        with self._conn() as c:
-            if self._already(c, name):
+        with storage.connect() as c:
+            if c.execute("SELECT 1 FROM ingested_files WHERE source_file=?", (name,)).fetchone():
                 return 0
-            now = datetime.utcnow().isoformat(timespec="seconds")
+            now = storage.now_iso()
             segs = self.transcriber.transcribe(audio_path)
             for s in segs:
                 s.created_at = now
-                c.execute("INSERT OR IGNORE INTO segments VALUES(?,?,?,?,?,?,?,?,?)", s.to_tuple())
+                c.execute("INSERT OR IGNORE INTO segments(id,source_file,start_sec,end_sec,text,speaker,language,created_at,processed,time_kind) VALUES(?,?,?,?,?,?,?,?,?,?)", s.to_tuple())
             c.execute("INSERT OR REPLACE INTO ingested_files VALUES(?,?,?)",
                       (name, now, len(segs)))
             c.commit()
@@ -160,9 +155,9 @@ class IngestionPipeline:
               source_file TEXT, seg_id TEXT, start_sec DOUBLE, end_sec DOUBLE,
               speaker TEXT, char_len INT, day TEXT)
         """)
-        from datetime import datetime
+        from . import storage as _s
         for s in segs:
-            day = (s.created_at or datetime.utcnow().isoformat())[:10]
+            day = (s.created_at or _s.now_iso())[:10]
             con.execute("INSERT INTO segment_stats VALUES(?,?,?,?,?,?,?)",
                         (s.source_file, s.id, s.start_sec, s.end_sec, s.speaker, len(s.text), day))
         con.close()

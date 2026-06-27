@@ -42,11 +42,9 @@ def ingest_transcript(path: str, llm=None, embedder=None, diarizer=None) -> dict
     audio = _paired_audio(p)
     uts = diarizer.attribute(uts, audio_path=str(audio) if audio else None)
 
-    # 转录文本无时间戳 → 用文件 mtime（真实系统文件时间戳）作本批参考时间 + 段时间戳。
-    # 逐句精确说话时刻不可得（需设备时间戳或音频强制对齐 WhisperX，GPU 盒选项）。
-    # start_sec/end_sec 仅为录音内偏移（排序用），不冒充墙钟时间。
-    import os
-    reference = datetime.fromtimestamp(p.stat().st_mtime).astimezone()
+    # 记录时间=系统收文时刻(now)；非真实发生时间(无设备时间戳不可得,见 time_kind='received')。
+    # start_sec/end_sec 仅录音内偏移(排序用)，不冒充墙钟。
+    reference = datetime.now().astimezone()
     now = reference.isoformat(timespec="seconds")
     seg_dicts = []
     with storage.connect() as c:
@@ -54,8 +52,8 @@ def ingest_transcript(path: str, llm=None, embedder=None, diarizer=None) -> dict
             return {"segments": 0, "skipped": "already ingested"}
         for u in uts:
             sid = f"{p.stem}:{u.line}"
-            c.execute("INSERT OR IGNORE INTO segments VALUES(?,?,?,?,?,?,?,?,?)",
-                      (sid, p.name, u.start, u.end, u.text, u.speaker, "zh", now, 0))
+            c.execute("INSERT OR IGNORE INTO segments(id,source_file,start_sec,end_sec,text,speaker,language,created_at,processed,time_kind) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                      (sid, p.name, u.start, u.end, u.text, u.speaker, "zh", now, 0, "received"))
             seg_dicts.append({"id": sid, "source_file": p.name, "start_sec": u.start,
                               "end_sec": u.end, "text": u.text, "speaker": u.speaker,
                               "created_at": now})
