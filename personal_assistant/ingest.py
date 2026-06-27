@@ -42,8 +42,12 @@ def ingest_transcript(path: str, llm=None, embedder=None, diarizer=None) -> dict
     audio = _paired_audio(p)
     uts = diarizer.attribute(uts, audio_path=str(audio) if audio else None)
 
-    reference = datetime.now()
-    now = storage.now_iso()
+    # 转录文本无时间戳 → 用文件 mtime（真实系统文件时间戳）作本批参考时间 + 段时间戳。
+    # 逐句精确说话时刻不可得（需设备时间戳或音频强制对齐 WhisperX，GPU 盒选项）。
+    # start_sec/end_sec 仅为录音内偏移（排序用），不冒充墙钟时间。
+    import os
+    reference = datetime.fromtimestamp(p.stat().st_mtime).astimezone()
+    now = reference.isoformat(timespec="seconds")
     seg_dicts = []
     with storage.connect() as c:
         if c.execute("SELECT 1 FROM ingested_files WHERE source_file=?", (p.name,)).fetchone():
