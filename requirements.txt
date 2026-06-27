@@ -1,0 +1,26 @@
+# Core
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+python-dotenv>=1.0
+pyyaml>=6.0
+requests>=2.31
+
+# Storage
+numpy>=1.26
+duckdb>=0.10
+
+# Scheduling / file watch
+APScheduler>=3.10
+watchdog>=4.0
+
+# LLM clients (pluggable: stub | anthropic_proxy | ollama | openai_compat)
+anthropic>=0.40
+openai>=1.30
+
+# ASR — production/GPU box only; lazy-imported, NOT required for stub dev.
+# On the dev box (no HuggingFace access) we use StubTranscriber instead.
+faster-whisper>=1.0
+
+# Tests
+pytest>=8.0

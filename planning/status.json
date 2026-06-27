@@ -1,0 +1,26 @@
+{
+  "project": "personal-assistant",
+  "displayName": "全自动个人助手",
+  "currentStage": "development",
+  "locked": true,
+  "lockedReason": "用户直导式构建（2026-06-28）；后台自治循环已停，防并发写入",
+  "startedAt": "2026-06-28",
+  "mvpScope": "deep-core: ASR→memory→distill→chat→proactive；App/Web/recommend 后补(v1.1+)",
+  "mvpStatus": "achieved_on_dev_box — stub 全链路 PASS + 真 GLM-5.2 会话代理 LLM 全链路 PASS",
+  "decisions": {
+    "llm": "pluggable: local Ollama default + cloud GLM-5.2 endpoint (dev 实测会话代理可用)",
+    "hardware": "user has GPU box (dev box has none)",
+    "audio": "sample audio/txt for dev, real device TBD; inbox watch-dir ingestion",
+    "mvp": "core few features deep (achieved)"
+  },
+  "phases": [
+    {"id": 0, "name": "scaffold+ASR", "status": "completed"},
+    {"id": 1, "name": "ingest→ASR→store", "status": "completed"},
+    {"id": 2, "name": "memory extraction+retrieval", "status": "completed"},
+    {"id": 3, "name": "distillation engine+persona profile", "status": "completed"},
+    {"id": 4, "name": "passive chat", "status": "completed"},
+    {"id": 5, "name": "proactive triggers+intervention", "status": "completed"}
+  ],
+  "deferred": ["recommendation deep-dive", "Android app", "Web control panel", "pyannote multi-speaker", "faster-whisper real model on GPU box"],
+  "lastUpdated": "2026-06-28"
+}
