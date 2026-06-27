@@ -60,6 +60,11 @@ class DistillationEngine:
                 + "\nRecent memories (JSON):\n" + json.dumps(mem_json, ensure_ascii=False))
         out = self.llm.chat_json(SYSTEM_DISTILL, user)
         if not isinstance(out, dict) or "profile" not in out:
+            # 重试一次，明确要求只返回 profile JSON
+            out = self.llm.chat_json(
+                "只返回 JSON：{\"profile\":{...9 维度...},\"change_summary\":\"...\"}，不要任何额外文字。",
+                user + "\n（上次返回不合法，请严格返回 JSON 对象）")
+        if not isinstance(out, dict) or "profile" not in out:
             return {"skipped": True, "reason": "LLM 未返回合法 profile"}
         profile = normalize(out["profile"])
         change = out.get("change_summary", "")

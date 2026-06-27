@@ -3,24 +3,23 @@
   "displayName": "全自动个人助手",
   "currentStage": "development",
   "locked": true,
-  "lockedReason": "用户直导式构建（2026-06-28）；后台自治循环已停，防并发写入",
-  "startedAt": "2026-06-28",
-  "mvpScope": "deep-core: ASR→memory→distill→chat→proactive；App/Web/recommend 后补(v1.1+)",
-  "mvpStatus": "achieved_on_dev_box — stub 全链路 PASS + 真 GLM-5.2 会话代理 LLM 全链路 PASS",
-  "decisions": {
-    "llm": "pluggable: local Ollama default + cloud GLM-5.2 endpoint (dev 实测会话代理可用)",
-    "hardware": "user has GPU box (dev box has none)",
-    "audio": "sample audio/txt for dev, real device TBD; inbox watch-dir ingestion",
-    "mvp": "core few features deep (achieved)"
-  },
-  "phases": [
-    {"id": 0, "name": "scaffold+ASR", "status": "completed"},
-    {"id": 1, "name": "ingest→ASR→store", "status": "completed"},
-    {"id": 2, "name": "memory extraction+retrieval", "status": "completed"},
-    {"id": 3, "name": "distillation engine+persona profile", "status": "completed"},
-    {"id": 4, "name": "passive chat", "status": "completed"},
-    {"id": 5, "name": "proactive triggers+intervention", "status": "completed"}
+  "lockedReason": "用户直导式构建（2026-06-28）；后台自治循环已停",
+  "version": "0.2.0",
+  "mvpStatus": "v0.1 深核 + v0.2 说话人/日历/提醒/反幻觉 均端到端跑通（stub + 真 GLM-5.2 会话代理）",
+  "v02Features": [
+    "设备自带转录→接入改转录文本驱动（ASR 降为可选回退）",
+    "说话人区分：TextDiarizer(dev)+PyannoteDiarizer(prod,GPU盒,音频+文字融合)",
+    "自动日历：事件抽取+temporal确定性日期解析+检索",
+    "定时提醒：意图抽取+确定性解析+到点触发(循环重排)",
+    "反幻觉 verify：when_dt确定性重解覆盖+when_raw/记忆溯源+不落地即删+assert",
+    "真实时间戳：now_iso系统本地实时；chat_log对话存档"
   ],
-  "deferred": ["recommendation deep-dive", "Android app", "Web control panel", "pyannote multi-speaker", "faster-whisper real model on GPU box"],
+  "decisions": {
+    "llm": "pluggable: local Ollama default + cloud GLM-5.2 (dev 实测会话代理可用)",
+    "hardware": "user has GPU box (dev box has none)",
+    "audio": "设备已自带转录；inbox watch-dir 收 .txt/.srt(+可选音频)",
+    "mvp": "core deep + 说话人/日历/提醒/反幻觉 (achieved)"
+  },
+  "deferred": ["recommendation deep-dive", "Android app", "Web panel", "pyannote real voiceprint", "faster-whisper real model"],
   "lastUpdated": "2026-06-28"
 }

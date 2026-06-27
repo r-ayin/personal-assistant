@@ -71,6 +71,14 @@ class StubLLM(LLMClient):
             return json.dumps(self._extract(prompt), ensure_ascii=False)
         if task == "DISTILL":
             return json.dumps(self._distill(prompt), ensure_ascii=False)
+        if task == "EXTRACT_EVENTS":
+            return json.dumps(self._extract_events(prompt), ensure_ascii=False)
+        if task == "EXTRACT_REMINDERS":
+            return json.dumps(self._extract_reminders(prompt), ensure_ascii=False)
+        if task == "RESOLVE_TIME":
+            return json.dumps(self._resolve_time_stub(prompt), ensure_ascii=False)
+        if task == "RESOLVE_RANGE":
+            return json.dumps(self._resolve_range_stub(prompt), ensure_ascii=False)
         if task == "INTERVENTION":
             return self._intervention(prompt)
         # CHAT / 默认
@@ -96,21 +104,21 @@ class StubLLM(LLMClient):
             sid = s.get("id", "?")
             text = s.get("text", "")
             out.append({"kind": "event", "content": text[:200],
-                         "evidence": f"segment:{sid}"})
+                         "segment_id": sid, "evidence": f"segment:{sid}"})
             for kw in pref_kw:
                 if kw in text:
                     out.append({"kind": "preference", "content": text[:200],
-                                 "evidence": f"segment:{sid} (kw:{kw})"})
+                                 "segment_id": sid, "evidence": f"segment:{sid} (kw:{kw})"})
                     break
             for kw in int_kw:
                 if kw in text:
                     out.append({"kind": "intention", "content": text[:200],
-                                 "evidence": f"segment:{sid} (kw:{kw})"})
+                                 "segment_id": sid, "evidence": f"segment:{sid} (kw:{kw})"})
                     break
             for kw, lab in emo_kw:
                 if kw in text:
                     out.append({"kind": "emotion", "content": lab,
-                                 "evidence": f"segment:{sid} (kw:{kw})"})
+                                 "segment_id": sid, "evidence": f"segment:{sid} (kw:{kw})"})
                     break
         return out
 
@@ -142,6 +150,84 @@ class StubLLM(LLMClient):
         return (f"（stub 建议）注意到你近期 {n} 条相关记录。"
                 "也许可以安排一段安静时间整理一下这些事，需要我帮你梳理个清单吗？")
 
+    def _time_expr(self, text: str):
+        pats = [r"(大前天|前天|昨天|今天|明天|后天|大后天)",
+                r"((?:上|这|本|下)周[一二三四五六日天])",
+                r"(\d{1,2}月\d{1,2}[日号])",
+                r"((?:上午|下午|晚上|早上|凌晨)?\s*\d{1,2}\s*[点时](?:\d{1,2}分|半)?)"]
+        for p in pats:
+            m = re.search(p, text)
+            if m:
+                return m.group(1)
+        return None
+
+    def _extract_events(self, prompt: str) -> list[dict]:
+        segs = self._block_json(prompt, "Utterances (JSON):")
+        if not isinstance(segs, list):
+            return []
+        out = []
+        for s in segs:
+            text = s.get("text", "")
+            t = self._time_expr(text)
+            if t:
+                out.append({"title": text[:20], "when_raw": t, "who": s.get("speaker", ""),
+                            "where": "", "id": s.get("id", "")})
+        return out
+
+    def _extract_reminders(self, prompt: str) -> list[dict]:
+        segs = self._block_json(prompt, "Utterances (JSON):")
+        if not isinstance(segs, list):
+            return []
+        out = []
+        rec_kw = [("每天", "daily"), ("每周", "weekly"), ("每月", "monthly")]
+        intent_kw = ["提醒", "要", "得", "该", "准备", "打算", "别忘", "需要", "开会", "交"]
+        for s in segs:
+            text = s.get("text", "")
+            t = self._time_expr(text)
+            if not t:
+                continue
+            if not any(k in text for k in intent_kw) and not any(k in text for k, _ in rec_kw):
+                continue
+            rec = ""
+            for k, v in rec_kw:
+                if k in text:
+                    rec = v
+                    break
+            out.append({"what": text[:30], "when_raw": t, "recurring": rec, "id": s.get("id", "")})
+        return out
+
+    def _resolve_time_stub(self, prompt: str) -> dict:
+        from .temporal import resolve
+        from datetime import datetime
+        expr, ref = "", datetime.now()
+        m = re.search(r"Raw expr:\s*(.*)", prompt)
+        if m:
+            expr = m.group(1).strip().split("\n")[0]
+        m2 = re.search(r"Reference\(ISO\):\s*([^\s]+)", prompt)
+        if m2:
+            try:
+                ref = datetime.fromisoformat(m2.group(1))
+            except Exception:
+                pass
+        r = resolve(expr, ref)
+        return {"dt": r[0].isoformat(timespec="minutes"), "precision": r[1]} if r else {"dt": None}
+
+    def _resolve_range_stub(self, prompt: str) -> dict:
+        from .temporal import resolve_range
+        from datetime import datetime
+        q, ref = "", datetime.now()
+        m = re.search(r"Query:\s*(.*)", prompt)
+        if m:
+            q = m.group(1).strip().split("\n")[0]
+        m2 = re.search(r"Reference\(ISO\):\s*([^\s]+)", prompt)
+        if m2:
+            try:
+                ref = datetime.fromisoformat(m2.group(1))
+            except Exception:
+                pass
+        s, e = resolve_range(q, ref)
+        return {"start": s, "end": e}
+
     def _chat(self, prompt: str) -> str:
         m = re.search(r"User says:\s*(.*)", prompt, re.S)
         msg = m.group(1).strip()[:200] if m else ""
@@ -166,7 +252,7 @@ class OpenAICompatLLM(LLMClient):
         self.model = model
 
     def chat(self, system: str, user: str, temperature: float = 0.3) -> str:
-        body = {"model": self.model, "temperature": temperature,
+        body = {"model": self.model, "temperature": temperature, "max_tokens": 4096,
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}]}
         headers = {"Content-Type": "application/json",
@@ -188,7 +274,7 @@ class AnthropicProxyLLM(LLMClient):
         self.model = model
 
     def chat(self, system: str, user: str, temperature: float = 0.3) -> str:
-        body = {"model": self.model, "max_tokens": 1024, "system": system,
+        body = {"model": self.model, "max_tokens": 4096, "system": system,
                 "messages": [{"role": "user", "content": user}]}
         headers = {"Content-Type": "application/json",
                    "x-api-key": self.api_key, "anthropic-version": "2023-06-01"}

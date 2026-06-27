@@ -38,6 +38,10 @@
     },
     "stub": {}
   },
+  "speaker": {
+    "backend": "text",
+    "pyannote": {"hf_token_env": "HF_TOKEN"}
+  },
   "distill": {
     "reflection_interval_hours": 24,
     "min_segments_for_distill": 5,
