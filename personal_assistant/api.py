@@ -1,11 +1,11 @@
-"""api.py — FastAPI 控制端（MVP 最小集；Web 面板 v1.1 再做）。"""
+"""api.py — FastAPI 控制端。"""
 from __future__ import annotations
 from pydantic import BaseModel
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 
-from . import config, storage, memory, distill, proactive, asr, chat
+from . import config, storage, memory, distill, proactive, chat, ingest, calendar, reminders, speaker
 
-app = FastAPI(title="personal-assistant", version="0.1.0")
+app = FastAPI(title="personal-assistant", version="0.2.0")
 
 
 class ChatIn(BaseModel):
@@ -14,14 +14,13 @@ class ChatIn(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "llm": config.get("llm.backend"),
-            "asr": config.get("asr.backend"), "embedder": config.get("embedder.backend")}
+    return {"status": "ok", "llm": config.get("llm.backend"), "asr": config.get("asr.backend"),
+            "embedder": config.get("embedder.backend"), "speaker": config.get("speaker.backend")}
 
 
 @app.post("/ingest")
-def ingest():
-    n = asr.IngestionPipeline().scan_once()
-    return {"ingested_segments": n}
+def ingest_now():
+    return ingest.scan_inbox()
 
 
 @app.get("/segments")
@@ -33,7 +32,8 @@ def segments():
 
 @app.get("/memories")
 def memories():
-    return {"count": len(storage.memories_all()), "memories": storage.memories_all()[-50:]}
+    ms = storage.memories_all()
+    return {"count": len(ms), "memories": ms[-50:]}
 
 
 @app.get("/profile")
@@ -44,7 +44,27 @@ def profile():
 
 @app.post("/chat")
 def converse(body: ChatIn):
-    return {"reply": chat.Assistant().respond(body.message)}
+    storage.add_chat_log("user", body.message)          # 真实系统时间戳
+    reply = chat.Assistant().respond(body.message)
+    storage.add_chat_log("assistant", reply)
+    return {"reply": reply}
+
+
+@app.post("/verify")
+def verify_now():
+    from . import verify
+    rep = verify.run_all()
+    try:
+        verify.assert_no_hallucination()
+        rep["assertion"] = "passed"
+    except AssertionError as e:
+        rep["assertion"] = f"failed: {e}"
+    return rep
+
+
+@app.get("/chat-log")
+def chat_log():
+    return {"logs": storage.chat_logs()}
 
 
 @app.post("/distill")
@@ -55,3 +75,28 @@ def run_distill():
 @app.post("/triggers")
 def run_triggers():
     return {"fired": proactive.ProactiveEngine().check()}
+
+
+@app.get("/calendar")
+def calendar_search(q: str = Query(default="")):
+    return {"count": 0 if not q else len(calendar.search(q)), "events": calendar.search(q) if q else storage.events_search("")}
+
+
+@app.get("/events")
+def events():
+    return {"events": storage.events_search("")}
+
+
+@app.get("/reminders")
+def reminders_list():
+    return {"reminders": storage.reminders_all()}
+
+
+@app.post("/reminders/check")
+def reminders_check():
+    return {"fired": reminders.ReminderScheduler().check_due()}
+
+
+@app.get("/speakers")
+def speakers():
+    return {"speakers": storage.speakers_all()}

@@ -12,7 +12,7 @@ from .llm import get_llm, get_embedder
 
 SYSTEM_EXTRACT = """[TASK:EXTRACT_MEMORIES]
 你是记忆抽取器。从用户语音转写片段中抽取结构化记忆。
-每条记忆字段：kind(必为 fact|event|preference|intention|emotion|skill 之一)、content(简述)、evidence(引用片段 id,如 segment:s1)。
+每条记忆字段：kind(必为 fact|event|preference|intention|emotion|skill 之一)、content(简述)、segment_id(源片段id,必须等于输入的某条 id)、evidence(同 segment_id)。
 只抽取片段中确实出现的信息，不得编造。返回 JSON 数组。"""
 
 
