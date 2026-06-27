@@ -1,0 +1,53 @@
+{
+  "llm": {
+    "backend": "stub",
+    "anthropic_proxy": {
+      "base_url": "${ANTHROPIC_BASE_URL}",
+      "api_key": "${ANTHROPIC_AUTH_TOKEN}",
+      "model": "claude-opus-4-6"
+    },
+    "ollama": {
+      "base_url": "http://localhost:11434/v1",
+      "api_key": "ollama",
+      "model": "qwen3:8b"
+    },
+    "openai_compat": {
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "api_key": "${GLM_API_KEY}",
+      "model": "glm-4.6"
+    },
+    "stub": {}
+  },
+  "embedder": {
+    "backend": "hashing",
+    "dim": 256,
+    "openai_compat": {
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "api_key": "${GLM_API_KEY}",
+      "model": "embedding-3"
+    }
+  },
+  "asr": {
+    "backend": "stub",
+    "language": "zh",
+    "faster_whisper": {
+      "model_size": "small",
+      "device": "cpu",
+      "compute_type": "int8",
+      "vad_filter": true
+    },
+    "stub": {}
+  },
+  "distill": {
+    "reflection_interval_hours": 24,
+    "min_segments_for_distill": 5,
+    "profile_path": "data/persona/profile.json"
+  },
+  "proactive": {
+    "check_interval_minutes": 30
+  },
+  "storage": {
+    "sqlite_path": "data/db/personal_assistant.db",
+    "duckdb_path": "data/db/analytics.duckdb"
+  }
+}

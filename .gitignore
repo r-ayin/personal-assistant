@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+.env
+
+# generated/runtime data (keep dir structure via .gitkeep)
+data/audio/*
+data/db/*
+data/logs/*
+data/inbox/*
+!data/**/.gitkeep
+
+# persona profiles are generated; track a sample manually if desired
+data/persona/*
+!data/persona/.gitkeep
