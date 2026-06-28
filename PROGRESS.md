@@ -2,7 +2,7 @@
 
 > 直导式构建。v0.1 深核主干；v0.2 说话人/日历/提醒/反幻觉；v0.3 推荐联网搜索；v0.4 个人 wiki；v0.5 LLM 可配 + 前端设计文档。
 
-## 当前状态（2026-06-28）
+## 当前状态（2026-06-29）
 - ✅ v0.1 深核 MVP 端到端跑通（ASR→记忆→蒸馏→对话→主动）
 - ✅ v0.2 扩展端到端跑通：
   - **设备已自带转录** → ASR 降为可选回退；接入改为接收转录文本(.txt/.srt)+可选音频
@@ -11,6 +11,13 @@
   - **定时提醒**：LLM 抽意图+when_raw → 确定性解析 → 到点触发通知（循环类重排）
   - **反幻觉 verify**：每轮 ingest 后脚本复查——when_dt 用 temporal 确定性重解覆盖、when_raw/记忆内容溯源到源转录、不落地即删；assert_no_hallucination 断言
   - **真实时间戳**：now_iso=系统本地实时；段/对话/日历全用；chat_log 存对话真实时间戳
+- ✅ v0.3 推荐引擎（联网动态搜索）：
+  - Bing Web Search API + 可切 `ApiWebSearcher` 后端；写死推荐池已删
+  - 推荐流程：蒸馏人格/兴趣 → LLM 生成搜索词 → 联网搜索 → LLM 筛选+排序 → 存储
+  - 反幻觉：推荐内容溯源到搜索结果 URL+snippet，无源不推
+- ✅ v0.4 个人 wiki：
+  - 记忆→切片+分类→编译互链主题页+源引用；主题动态增长（增量 build）
+  - 反幻觉：wiki 内容溯源到记忆条目，记忆溯源到源转录
 - ✅ v0.5 LLM 可插拔配置增强：
   - 5 旋钮可配：model / context_window / max_tokens / thinking_effort(off·低·中·高) / base_url(api) / api_key
   - 全局覆盖层：`config.set_override` 运行态覆盖 + env(PA_LLM_MODEL/BASE_URL/API_KEY/MAX_TOKENS/THINKING/THINKING_FORMAT) + `llm.*` 全局默认回落
@@ -18,9 +25,12 @@
   - 新增 `glm_anthropic` 后端（走 `open.bigmodel.cn/api/anthropic`）使 GLM 也能分低/中/高
   - `cli llm` 查生效配置（key 掩码）+ native 字段预览
   - 新端点：`GET/POST /settings/llm`、`POST /inbox/upload`（原始 body+filename，免 multipart）
-  - 测试 `tests/test_llm_config.py` 10/10 绿；stub e2e 无回归
+- ✅ 测试体系：
+  - `tests/test_llm_config.py` 10/10 绿（可插拔旋钮+覆盖层+思考档位）
+  - `tests/test_pluggable.py` 41 用例（工厂路由/stub 合约/接口不变量/ABC 继承）
+  - pytest wrapper `tests/test_e2e_pytest.py`（stub 全链路端到端）
+  - stub 全链路 PASS + 真 GLM-5.2（会话代理）全链路 PASS（含反幻觉断言）
 - ✅ 前端设计文档 `planning/frontend-design.md`（14 节 + 附录 A 四家真实参数，供外部实现回接）
-- stub 全链路 PASS + 真 GLM-5.2（会话代理）全链路 PASS（含反幻觉断言）。
 
 ## 阶段
 - [x] Phase 0 脚手架+ASR 接口+后端骨架
