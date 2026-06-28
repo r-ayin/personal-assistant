@@ -15,3 +15,6 @@ data/inbox/*
 # persona profiles are generated; track a sample manually if desired
 data/persona/*
 !data/persona/.gitkeep
+
+# pipeline-gate 运行态（triage current/history，见 /home/admin/workspace/PIPELINE-GATE.md）
+.pipeline/
