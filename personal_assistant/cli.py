@@ -142,6 +142,21 @@ def cmd_llm(args):
         print("note:             OpenAI 推理模型 → 改发 max_completion_tokens（非 max_tokens）")
 
 
+def cmd_habits(args):
+    from .asr import query_habits
+    h = query_habits()
+    if not h["daily"]:
+        print("(no DuckDB habit data yet — run pipeline first)")
+        return
+    print(f"=== 习惯分析 ({h['total_days']} days, {h['total_segments']} segments) ===\n")
+    print("-- daily_summary --")
+    for d in h["daily"][:15]:
+        print(f"  {d['day']}  segs={d['segments']}  chars={d['total_chars']}  dur={d['duration_sec']}s  speakers={d['speakers']}")
+    print("\n-- speaker_summary --")
+    for s in h["speaker"]:
+        print(f"  {s['speaker']:12s}  segs={s['segments']}  chars={s['total_chars']}  avg={s['avg_chars']}  days={s['active_days']}")
+
+
 def cmd_test(args):
     from tests.test_e2e import run
     sys.exit(0 if run() else 1)
@@ -162,6 +177,7 @@ def main(argv=None):
     rc = sub.add_parser("recommend"); rc.add_argument("kind", nargs="?", default="book", choices=["book","movie","action"]); rc.add_argument("query", nargs="?"); rc.set_defaults(func=cmd_recommend)
     w = sub.add_parser("wiki"); w.add_argument("action", choices=["build","list","search"]); w.add_argument("q", nargs="?"); w.set_defaults(func=cmd_wiki)
     sub.add_parser("status").set_defaults(func=cmd_status)
+    sub.add_parser("habits").set_defaults(func=cmd_habits)
     sub.add_parser("llm").set_defaults(func=cmd_llm)
     s = sub.add_parser("serve"); s.add_argument("--host", default="0.0.0.0"); s.add_argument("--port", type=int, default=8000); s.set_defaults(func=cmd_serve)
     sub.add_parser("test").set_defaults(func=cmd_test)

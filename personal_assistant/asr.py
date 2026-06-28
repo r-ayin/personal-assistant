@@ -155,12 +155,55 @@ class IngestionPipeline:
               source_file TEXT, seg_id TEXT, start_sec DOUBLE, end_sec DOUBLE,
               speaker TEXT, char_len INT, day TEXT)
         """)
+        _ensure_views(con)
         from . import storage as _s
         for s in segs:
             day = (s.created_at or _s.now_iso())[:10]
             con.execute("INSERT INTO segment_stats VALUES(?,?,?,?,?,?,?)",
                         (s.source_file, s.id, s.start_sec, s.end_sec, s.speaker, len(s.text), day))
         con.close()
+
+
+def _ensure_views(con):
+    con.execute("""CREATE OR REPLACE VIEW daily_summary AS
+        SELECT day, COUNT(*) AS segments, SUM(char_len) AS total_chars,
+               ROUND(SUM(end_sec - start_sec), 1) AS total_duration_sec,
+               COUNT(DISTINCT speaker) AS speakers,
+               COUNT(DISTINCT source_file) AS files
+        FROM segment_stats GROUP BY day ORDER BY day DESC""")
+    con.execute("""CREATE OR REPLACE VIEW speaker_summary AS
+        SELECT speaker, COUNT(*) AS segments, SUM(char_len) AS total_chars,
+               ROUND(AVG(char_len), 0) AS avg_chars_per_seg,
+               ROUND(SUM(end_sec - start_sec), 1) AS total_duration_sec,
+               COUNT(DISTINCT day) AS active_days
+        FROM segment_stats GROUP BY speaker ORDER BY total_chars DESC""")
+
+
+def query_habits() -> dict:
+    """Query DuckDB habit views; returns dict with daily/speaker summaries."""
+    import duckdb
+    dpath = config.duckdb_path()
+    if not dpath.exists():
+        return {"daily": [], "speaker": [], "total_days": 0, "total_segments": 0}
+    con = duckdb.connect(str(dpath), read_only=True)
+    try:
+        con.execute("SELECT 1 FROM segment_stats LIMIT 1")
+    except duckdb.CatalogException:
+        con.close()
+        return {"daily": [], "speaker": [], "total_days": 0, "total_segments": 0}
+    con.close()
+    con = duckdb.connect(str(dpath))
+    con.execute("""CREATE TABLE IF NOT EXISTS segment_stats(
+        source_file TEXT, seg_id TEXT, start_sec DOUBLE, end_sec DOUBLE,
+        speaker TEXT, char_len INT, day TEXT)""")
+    _ensure_views(con)
+    daily = [dict(zip(["day", "segments", "total_chars", "duration_sec", "speakers", "files"], r))
+             for r in con.execute("SELECT * FROM daily_summary").fetchall()]
+    speaker = [dict(zip(["speaker", "segments", "total_chars", "avg_chars", "duration_sec", "active_days"], r))
+               for r in con.execute("SELECT * FROM speaker_summary").fetchall()]
+    meta = con.execute("SELECT COUNT(DISTINCT day), COUNT(*) FROM segment_stats").fetchone()
+    con.close()
+    return {"daily": daily, "speaker": speaker, "total_days": meta[0], "total_segments": meta[1]}
 
     def scan_once(self) -> int:
         inbox = config.inbox_dir()
