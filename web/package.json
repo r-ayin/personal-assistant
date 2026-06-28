@@ -1,0 +1,9 @@
+{
+  "name": "oneday-design",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node /app/static/design-build.js",
+    "dev": "node /app/static/design-static-server.js 3015"
+  }
+}

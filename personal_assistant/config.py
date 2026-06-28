@@ -52,14 +52,57 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
         val = os.environ.get(env_key)
         if val and section in cfg:
             cfg[section]["backend"] = val
+    # 环境覆盖 LLM 5 旋钮（注入当前激活后端，与 PA_LLM_BACKEND 同模式）
+    backend = cfg.get("llm", {}).get("backend")
+    if backend and isinstance(cfg.get("llm", {}).get(backend), dict):
+        for env_key, field, cast in (("PA_LLM_MODEL", "model", str),
+                                     ("PA_LLM_BASE_URL", "base_url", str),
+                                     ("PA_LLM_API_KEY", "api_key", str),
+                                     ("PA_LLM_MAX_TOKENS", "max_tokens", int),
+                                     ("PA_LLM_THINKING", "thinking_effort", str),
+                                     ("PA_LLM_THINKING_FORMAT", "thinking_format", str)):
+            val = os.environ.get(env_key)
+            if val:
+                try:
+                    cfg["llm"][backend][field] = cast(val)
+                except (ValueError, TypeError):
+                    cfg["llm"][backend][field] = val
     return cfg
 
 
 CONFIG = load_config()
 
 
+# ── 运行态覆盖层（供 POST /settings/llm 写、get_llm() 读）──────────
+_RUNTIME: dict[str, object] = {}
+
+
+def set_override(path: str, value) -> None:
+    """写运行态覆盖（点分路径，如 'llm.openai_compat.model'）。"""
+    _RUNTIME[path] = value
+
+
+def set_overrides(items: dict) -> None:
+    """批量写覆盖。"""
+    _RUNTIME.update(items)
+
+
+def clear_override(path: str | None = None) -> None:
+    if path:
+        _RUNTIME.pop(path, None)
+    else:
+        _RUNTIME.clear()
+
+
+def overrides() -> dict:
+    """返回当前运行态覆盖快照（api_key 明文由调用方负责掩码）。"""
+    return dict(_RUNTIME)
+
+
 def get(path: str, default=None):
-    """点分路径取配置：get('llm.backend')."""
+    """点分路径取配置：get('llm.backend')。先查运行态覆盖，再查 CONFIG。"""
+    if path in _RUNTIME:
+        return _RUNTIME[path]
     cur = CONFIG
     for part in path.split("."):
         if not isinstance(cur, dict) or part not in cur:

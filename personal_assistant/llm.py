@@ -301,18 +301,89 @@ def _post_json(url: str, headers: dict, body: dict, timeout: float = 60.0) -> di
         return json.loads(resp.read().decode("utf-8"))
 
 
-class OpenAICompatLLM(LLMClient):
-    """OpenAI 兼容 /v1/chat/completions。Ollama 与 GLM(openai 兼容端点) 共用。"""
+# ── 思考程度档位 → provider 原生字段（按官方文档实测，不捏造）─────
+# 档位归一：off/低/中/高 ↔ off/low/medium/high
+_EFFORT_NORM = {"off": "off", "low": "low", "medium": "medium", "high": "high",
+                "低": "low", "中": "medium", "高": "high"}
+_EFFORT_BUDGET = {"low": 4096, "medium": 12288, "high": 24576}
 
-    def __init__(self, base_url: str, api_key: str, model: str):
+
+def _norm_effort(effort) -> str:
+    e = str(effort or "off").strip()
+    return _EFFORT_NORM.get(e) or _EFFORT_NORM.get(e.lower(), "off")
+
+
+def _budget_for(effort_norm: str, max_tokens: int) -> int:
+    """budget 映射 低4096/中12288/高24576，clamp 到 [1024, max_tokens-1024]。
+    Anthropic/GLM-anthropic 约束：budget ≥1024 且 < max_tokens。"""
+    n = _EFFORT_BUDGET.get(effort_norm, 4096)
+    cap = max(1024, (int(max_tokens or 4096)) - 1024)
+    return min(n, cap)
+
+
+def _thinking_body(effort, fmt: str, max_tokens: int):
+    """off/低/中/高 → provider 原生思考字段。
+    返回 (extra_fields, use_max_completion_tokens)。extra 合并入请求体。
+
+    - glm(openai_compat 端点)：仅 thinking.type enabled/disabled，无 budget（低/中/高塌缩为开）
+    - openai：reasoning_effort low/medium/high；推理模型须用 max_completion_tokens 非 max_tokens
+    - qwen：enable_thinking + thinking_budget（urllib 顶层字段）
+    - anthropic：thinking.{type:budget_tokens}（min 1024, < max_tokens）
+    具体上限随型号变动，以官方文档为准。
+    """
+    e = _norm_effort(effort)
+    if e == "off":
+        if fmt == "glm":
+            return {"thinking": {"type": "disabled"}}, False   # GLM 默认思考开，off 须显式 disable
+        if fmt == "qwen":
+            return {"enable_thinking": False}, False
+        return {}, False                                        # anthropic/openai：省略
+    if fmt == "glm":
+        return {"thinking": {"type": "enabled"}}, False        # 无 budget 旋钮
+    if fmt == "openai":
+        return {"reasoning_effort": e}, True                   # e=low/medium/high；改发 max_completion_tokens
+    if fmt == "qwen":
+        return {"enable_thinking": True, "thinking_budget": _budget_for(e, max_tokens)}, False
+    if fmt == "anthropic":
+        return {"thinking": {"type": "enabled", "budget_tokens": _budget_for(e, max_tokens)}}, False
+    return {}, False
+
+
+def mask_key(k: str) -> str:
+    if not k:
+        return ""
+    if len(k) <= 8:
+        return "*" * len(k)
+    return f"{k[:4]}…{k[-4:]}"
+
+
+class OpenAICompatLLM(LLMClient):
+    """OpenAI 兼容 /chat/completions。GLM(openai 兼容端点) / Ollama / OpenAI / Qwen 共用。
+    thinking_format：glm(开/关) | openai(reasoning_effort) | qwen(enable_thinking+thinking_budget)。"""
+
+    def __init__(self, base_url: str, api_key: str, model: str,
+                 max_tokens: int = 4096, thinking_effort: str = "off",
+                 thinking_format: str = "glm"):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
+        self.max_tokens = int(max_tokens or 4096)
+        self.thinking_effort = thinking_effort
+        self.thinking_format = thinking_format
 
     def chat(self, system: str, user: str, temperature: float = 0.3) -> str:
-        body = {"model": self.model, "temperature": temperature, "max_tokens": 4096,
+        extra, use_mct = _thinking_body(self.thinking_effort, self.thinking_format, self.max_tokens)
+        body = {"model": self.model,
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}]}
+        if use_mct:
+            # OpenAI 推理模型：max_completion_tokens（非 max_tokens），温度须 1
+            body["max_completion_tokens"] = self.max_tokens
+            body["temperature"] = 1
+        else:
+            body["max_tokens"] = self.max_tokens
+            body["temperature"] = temperature
+        body.update(extra)
         headers = {"Content-Type": "application/json",
                    "Authorization": f"Bearer {self.api_key}"}
         data = _post_json(f"{self.base_url}/chat/completions", headers, body)
@@ -324,16 +395,24 @@ class OllamaLLM(OpenAICompatLLM):
 
 
 class AnthropicProxyLLM(LLMClient):
-    """会话本地代理（Anthropic 协议）。路径不确定，依次尝试。"""
+    """Anthropic 协议（会话本地代理 / Claude / GLM-anthropic 端点）。路径不确定，依次尝试。
+    thinking_format=anthropic：thinking.{type:budget_tokens}（min 1024, < max_tokens）。"""
 
-    def __init__(self, base_url: str, api_key: str, model: str):
+    def __init__(self, base_url: str, api_key: str, model: str,
+                 max_tokens: int = 4096, thinking_effort: str = "off",
+                 thinking_format: str = "anthropic"):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
+        self.max_tokens = int(max_tokens or 4096)
+        self.thinking_effort = thinking_effort
+        self.thinking_format = thinking_format or "anthropic"
 
     def chat(self, system: str, user: str, temperature: float = 0.3) -> str:
-        body = {"model": self.model, "max_tokens": 4096, "system": system,
+        extra, _ = _thinking_body(self.thinking_effort, self.thinking_format, self.max_tokens)
+        body = {"model": self.model, "max_tokens": self.max_tokens, "system": system,
                 "messages": [{"role": "user", "content": user}]}
+        body.update(extra)
         headers = {"Content-Type": "application/json",
                    "x-api-key": self.api_key, "anthropic-version": "2023-06-01"}
         last_err = None
@@ -349,6 +428,11 @@ class AnthropicProxyLLM(LLMClient):
             except Exception as e:
                 last_err = f"{type(e).__name__}: {e}"
         raise RuntimeError(f"anthropic_proxy 调用失败: {last_err}")
+
+
+class GLMAnthropicLLM(AnthropicProxyLLM):
+    """GLM 走 Anthropic 兼容端点(open.bigmodel.cn/api/anthropic)，支持 budget_tokens 分低/中/高。"""
+    pass
 
 
 # ── Embedder ────────────────────────────────────────────────────
@@ -394,20 +478,54 @@ class OpenAICompatEmbedder(Embedder):
 
 
 # ── 工厂 ────────────────────────────────────────────────────────
+def _llm_fields(sec: str) -> dict:
+    """读后端字段，回落到 llm.* 全局默认（供 get_llm / effective_llm_config）。"""
+    def g(f, d=None):
+        return config.get(f"llm.{sec}.{f}", config.get(f"llm.{f}", d))
+    return {"base_url": g("base_url", ""), "api_key": g("api_key", ""),
+            "model": g("model", ""), "max_tokens": g("max_tokens", 4096),
+            "thinking_effort": g("thinking_effort", "off"),
+            "thinking_format": g("thinking_format", "glm")}
+
+
 def get_llm() -> LLMClient:
     backend = config.get("llm.backend", "stub")
     if backend == "stub":
         return StubLLM()
+    f = _llm_fields(backend)
     if backend == "anthropic_proxy":
-        c = config.get("llm.anthropic_proxy", {})
-        return AnthropicProxyLLM(c.get("base_url", ""), c.get("api_key", ""), c.get("model", ""))
+        return AnthropicProxyLLM(f["base_url"], f["api_key"], f["model"],
+                                 f["max_tokens"], f["thinking_effort"],
+                                 f["thinking_format"] or "anthropic")
+    if backend == "glm_anthropic":
+        return GLMAnthropicLLM(f["base_url"], f["api_key"], f["model"],
+                               f["max_tokens"], f["thinking_effort"], "anthropic")
     if backend == "ollama":
-        c = config.get("llm.ollama", {})
-        return OllamaLLM(c.get("base_url", ""), c.get("api_key", "ollama"), c.get("model", ""))
+        return OllamaLLM(f["base_url"], f["api_key"] or "ollama", f["model"],
+                         f["max_tokens"], f["thinking_effort"],
+                         f["thinking_format"] or "glm")
     if backend == "openai_compat":
-        c = config.get("llm.openai_compat", {})
-        return OpenAICompatLLM(c.get("base_url", ""), c.get("api_key", ""), c.get("model", ""))
+        return OpenAICompatLLM(f["base_url"], f["api_key"], f["model"],
+                               f["max_tokens"], f["thinking_effort"],
+                               f["thinking_format"] or "glm")
     raise ValueError(f"unknown llm backend: {backend}")
+
+
+def effective_llm_config() -> dict:
+    """供 cli llm / GET /settings/llm：生效配置（key 掩码）+ native thinking 字段预览。"""
+    backend = config.get("llm.backend", "stub")
+    out = {"backend": backend}
+    if backend == "stub":
+        return out
+    f = _llm_fields(backend)
+    extra, use_mct = _thinking_body(f["thinking_effort"], f["thinking_format"], f["max_tokens"])
+    out.update({"model": f["model"], "base_url": f["base_url"],
+                "api_key_masked": mask_key(f["api_key"]),
+                "max_tokens": f["max_tokens"], "thinking_effort": f["thinking_effort"],
+                "thinking_format": f["thinking_format"],
+                "native_preview": extra,
+                "uses_max_completion_tokens": use_mct})
+    return out
 
 
 def get_embedder() -> Embedder:

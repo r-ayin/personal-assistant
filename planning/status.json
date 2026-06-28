@@ -4,16 +4,17 @@
   "currentStage": "development",
   "locked": true,
   "lockedReason": "用户直导式构建（2026-06-28）；后台自治循环已停",
-  "version": "0.4.0",
-  "mvpStatus": "v0.1 深核 + v0.2 说话人/日历/提醒/反幻觉/真实时间 + v0.3 推荐联网搜索 + v0.4 个人wiki 均端到端跑通（stub + 真 GLM-5.2 会话代理）",
+  "version": "0.5.0",
+  "mvpStatus": "v0.1 深核 + v0.2 说话人/日历/提醒/反幻觉/真实时间 + v0.3 推荐联网搜索 + v0.4 个人wiki + v0.5 LLM 可配(5旋钮+思考程度档位+全局覆盖+cli llm+3新端点) 均端到端跑通（stub + 真 GLM-5.2 会话代理）",
   "v04Feature": "个人wiki:记忆→自动切片+LLM分类打标+编译互链主题页(title/body/tags/source_ids/links);反幻觉(source_ids真实+body落地源);按标签/词检索",
+  "v05Feature": "LLM 可配: model/context_window/max_tokens/thinking_effort(off·低·中·高)/base_url/api_key;全局覆盖层(config.set_override+env+llm.*默认);思考程度→provider原生字段(GLM开/关·GLM-anthropic budget·OpenAI reasoning_effort+max_completion_tokens·Qwen enable_thinking+thinking_budget·Anthropic thinking.budget_tokens);新增 glm_anthropic 后端;cli llm;GET/POST /settings/llm + POST /inbox/upload;前端设计文档 planning/frontend-design.md",
   "decisions": {
-    "llm": "pluggable: local Ollama default + cloud GLM-5.2 (dev 会话代理可用)",
+    "llm": "pluggable: local Ollama default + cloud GLM-5.2 (dev 会话代理可用); 5旋钮可配+思考程度档位(按官方文档映射4家provider)",
     "hardware": "user has GPU box (dev box has none)",
     "audio": "设备自带转录(无时间戳);inbox watch-dir;时间戳=收文记录时间(time_kind=received)",
     "web": "Bing(默认,免key) + 可切 ApiWebSearcher(用户配搜索API,tavily/generic)",
-    "mvp": "core deep + 说话人/日历/提醒/反幻觉/推荐/wiki (achieved)"
+    "mvp": "core deep + 说话人/日历/提醒/反幻觉/推荐/wiki/LLM可配 (achieved)"
   },
-  "deferred": ["Android app", "Web panel", "pyannote real voiceprint", "faster-whisper real model", "persona LoRA"],
+  "deferred": ["Android app", "Web panel 实现(设计文档已完成 planning/frontend-design.md)", "pyannote real voiceprint", "faster-whisper real model", "persona LoRA"],
   "lastUpdated": "2026-06-28"
 }
