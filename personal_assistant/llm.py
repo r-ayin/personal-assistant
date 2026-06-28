@@ -79,6 +79,8 @@ class StubLLM(LLMClient):
             return json.dumps(self._resolve_time_stub(prompt), ensure_ascii=False)
         if task == "RESOLVE_RANGE":
             return json.dumps(self._resolve_range_stub(prompt), ensure_ascii=False)
+        if task == "RECOMMEND":
+            return json.dumps(self._recommend(prompt), ensure_ascii=False)
         if task == "INTERVENTION":
             return self._intervention(prompt)
         # CHAT / 默认
@@ -227,6 +229,24 @@ class StubLLM(LLMClient):
                 pass
         s, e = resolve_range(q, ref)
         return {"start": s, "end": e}
+
+    def _recommend(self, prompt: str) -> list[dict]:
+        """从【真实联网搜索结果】里挑，不写死。无结果→空。"""
+        prof = self._block_json(prompt, "Persona (JSON):")
+        prof = prof if isinstance(prof, dict) else {}
+        results = self._block_json(prompt, "Web search results (real, JSON):")
+        dims = [d for d in ("preferences", "personality", "goals", "habits",
+                            "knowledge", "skills", "values", "affective_baseline")
+                if prof.get(d)]
+        base = dims[0] if dims else "personality"
+        if not isinstance(results, list) or not results:
+            return []
+        out = []
+        for r in results[:3]:
+            title = (r.get("title") or r.get("snippet") or "").strip()[:60]
+            if title:
+                out.append({"item": title, "reason": f"来自联网搜索，结合你的{base}特质", "based_on": base})
+        return out
 
     def _chat(self, prompt: str) -> str:
         m = re.search(r"User says:\s*(.*)", prompt, re.S)

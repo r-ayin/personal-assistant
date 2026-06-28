@@ -42,6 +42,21 @@
     "backend": "text",
     "pyannote": {"hf_token_env": "HF_TOKEN"}
   },
+  "web": {
+    "backend": "bing",
+    "api": {
+      "format": "tavily",
+      "api_key": "${TAVILY_API_KEY}",
+      "base_url": "",
+      "query_param": "q",
+      "num_param": "num",
+      "key_param": "api_key",
+      "result_path": "results",
+      "title_field": "title",
+      "url_field": "url",
+      "snippet_field": "content"
+    }
+  },
   "distill": {
     "reflection_interval_hours": 24,
     "min_segments_for_distill": 5,

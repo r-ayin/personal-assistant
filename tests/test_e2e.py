@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from personal_assistant import (config, storage, ingest, memory, distill, proactive,
-                                chat, calendar, reminders, speaker, verify)
+                                chat, calendar, reminders, speaker, verify, recommend)
 
 # A 话多且多用"我"→ TextDiarizer 识别为 user；B→他人
 SAMPLE = """A: 明天下午三点要开项目会。
@@ -119,6 +119,15 @@ def run() -> bool:
             fails.append("chat_log 时间戳非系统实时")
     except Exception as e:
         fails.append(f"chat_log 时间戳解析失败: {e}")
+
+    # 11. 推荐（联网动态搜索真实结果 + 反幻觉）
+    recs = recommend.recommend(kind="book", query="历史")
+    print(f"[11] recommend book: {len(recs)} 条（联网搜索）")
+    if not recs:
+        fails.append("recommend 空（应联网搜出真实结果）")
+    for r in recs:
+        if not r.get("item") or not r.get("based_on"):
+            fails.append(f"recommend 项缺 item/based_on: {r}")
 
     if fails:
         print("\n❌ FAIL:")
