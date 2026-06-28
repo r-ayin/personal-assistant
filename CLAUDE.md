@@ -8,7 +8,7 @@ development（用户 2026-06-28 直导式构建，`planning/status.json` locked=
 
 ## 架构与模块（包在根级 `personal_assistant/`，扁平模块）
 - `config.py` — 加载 .env + config/default.json，${VAR} 替换，PA_*_BACKEND 环境覆盖。
-- `llm.py` — 可插拔 LLM/Embedder：StubLLM(智能桩,带 [TASK:*] 分发) / AnthropicProxyLLM(会话代理,urllib) / OllamaLLM / OpenAICompatLLM；HashingEmbedder / OpenAICompatEmbedder。
+- `llm.py` — 可插拔 LLM/Embedder：StubLLM(智能桩,带 [TASK:*] 分发) / AnthropicProxyLLM(会话代理,urllib) / OllamaLLM / OpenAICompatLLM / GLMAnthropicLLM(GLM anthropic 端点)；HashingEmbedder / OpenAICompatEmbedder。**5 旋钮可配**(model/context_window/max_tokens/thinking_effort off·低·中·高/base_url/api_key)+全局覆盖层；`_thinking_body` 按官方文档映射 4 家 provider 原生思考字段；`effective_llm_config()`+`mask_key()` 供 cli/api。
 - `transcript.py` — 解析设备转录（.txt 每行/带时间戳/说话人标签 / .srt）→ Utterance。
 - `asr.py` — Transcriber 接口 + StubTranscriber + FasterWhisperTranscriber(lazy,prod)；IngestionPipeline(纯音频回退路径)。
 - `speaker.py` — 说话人区分：Diarizer 接口 + TextDiarizer(dev,文字+标签) + PyannoteDiarizer(prod,lazy,音频声纹+文字融合) + SpeakerRegistry。
@@ -22,8 +22,8 @@ development（用户 2026-06-28 直导式构建，`planning/status.json` locked=
 - `verify.py` — **反幻觉脚本**：确定性重解 when_dt 覆盖、when_raw/记忆内容溯源到源转录、不落地即删；`assert_no_hallucination`。
 - `proactive.py` — 主动触发（intention/emotional/topic）→ 干预 → CLI/日志。
 - `chat.py` — 被动对话（人格档案 + 检索）。
-- `api.py` — FastAPI：/health /ingest /segments /memories /profile /chat /distill /triggers /calendar /events /reminders /verify /chat-log。
-- `cli.py` — 子命令：pipeline / distill / chat / proactive / calendar / reminders / speakers / verify / status / serve / test。
+- `api.py` — FastAPI：/health /ingest /segments /memories /profile /chat /distill /triggers /calendar /events /reminders /verify /chat-log /speakers /recommend /wiki + /settings/llm(GET/POST) /inbox/upload。
+- `cli.py` — 子命令：pipeline / distill / chat / proactive / calendar / reminders / speakers / verify / status / llm / serve / test。
 
 ## 反幻觉与真实时间（核心约束）
 - **时间戳=记录时间(收文时刻)，非真实发生时间**：段 `created_at` = 系统收到转录的 `now()`，`time_kind='received'` 显式标注。设备转录**无时间戳**，真实发生时间不可得（需设备时间戳或音频强制对齐 WhisperX，届时 `time_kind='occurred'`）。`start_sec/end_sec` 仅录音内偏移，不冒充墙钟。chat_log 同理用 `now()`。temporal 解析 reference=该记录时间。
@@ -36,12 +36,14 @@ development（用户 2026-06-28 直导式构建，`planning/status.json` locked=
 - ASR 默认 stub（设备已自带转录，ASR 非必需）；faster-whisper 真后端 lazy import(GPU 盒)。
 - Embedder 默认 hashing；说话人默认 text（pyannote 真声纹需 GPU 盒+HF token）。
 - **会话代理 `127.0.0.1:58597/v1/anthropic` 实测可用作真 LLM**（路径 /v1/messages，随会话存活）。
-- 环境覆盖：`PA_LLM_BACKEND` / `PA_ASR_BACKEND` / `PA_EMBEDDER`。
+- 环境覆盖：`PA_LLM_BACKEND` / `PA_ASR_BACKEND` / `PA_EMBEDDER` / `PA_LLM_MODEL` / `PA_LLM_BASE_URL` / `PA_LLM_API_KEY` / `PA_LLM_MAX_TOKENS` / `PA_LLM_THINKING`(off·低·中·高) / `PA_LLM_THINKING_FORMAT`(glm·openai·qwen·anthropic)。
 
 ## 运行
 ```bash
 python3 -m personal_assistant.cli test                              # stub 全链路
 PA_LLM_BACKEND=anthropic_proxy python3 -m personal_assistant.cli test  # 真 GLM-5.2
+python3 -m personal_assistant.cli llm                               # 查生效 LLM 配置(key 掩码)
+PA_LLM_BACKEND=openai_compat PA_LLM_THINKING=高 python3 -m personal_assistant.cli llm  # 改思考程度
 python3 -m personal_assistant.cli pipeline --once                   # 灌 inbox 转录
 python3 -m personal_assistant.cli calendar 明天                     # 日历检索
 python3 -m personal_assistant.cli verify                            # 反幻觉复查

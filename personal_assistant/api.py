@@ -1,15 +1,45 @@
 """api.py — FastAPI 控制端。"""
 from __future__ import annotations
+from pathlib import Path
 from pydantic import BaseModel
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException, Request
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import config, storage, memory, distill, proactive, chat, ingest, calendar, reminders, speaker
 
-app = FastAPI(title="personal-assistant", version="0.2.0")
+app = FastAPI(title="personal-assistant", version="0.5.0")
+
+# CORS（防前端另行托管时跨域；同源 /web 托管时本不需要）
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
+                   allow_headers=["*"])
+
+# 同源静态托管前端 web/（/web/ → index.html；fetch 相对路径免跨域）
+_WEB_DIR = config.ROOT / "web"
+if _WEB_DIR.is_dir():
+    app.mount("/web", StaticFiles(directory=str(_WEB_DIR), html=True), name="web")
+
+
+@app.get("/")
+def root():
+    return RedirectResponse(url="/web/")
 
 
 class ChatIn(BaseModel):
     message: str
+
+
+class LLMSettingsIn(BaseModel):
+    """POST /settings/llm 入参：任一字段可选，写运行态覆盖当前激活后端。"""
+    backend: str | None = None
+    model: str | None = None
+    context_window: int | None = None
+    max_tokens: int | None = None
+    thinking_effort: str | None = None
+    thinking_format: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
 
 
 @app.get("/health")
@@ -119,3 +149,49 @@ def wiki_list(tag: str = "", q: str = ""):
 def wiki_build():
     from . import wiki
     return {"built": wiki.build()}
+
+
+# ── LLM 配置（前端设置面板回接）──────────────────────────────────
+@app.get("/settings/llm")
+def llm_settings():
+    """生效配置（key 掩码）+ native thinking 字段预览。"""
+    from . import llm
+    return llm.effective_llm_config()
+
+
+@app.post("/settings/llm")
+def llm_settings_update(body: LLMSettingsIn):
+    """写运行态覆盖（作用于当前激活后端）。key 不回显。"""
+    if body.backend:
+        if body.backend not in ("stub", "anthropic_proxy", "ollama",
+                                "openai_compat", "glm_anthropic"):
+            raise HTTPException(400, f"unknown backend: {body.backend}")
+        config.set_override("llm.backend", body.backend)
+    backend = config.get("llm.backend", "stub")
+    applied = []
+    if backend == "stub":
+        return {"backend": "stub", "applied": [], "note": "stub 无可配字段"}
+    for field in ("model", "context_window", "max_tokens", "thinking_effort",
+                  "thinking_format", "base_url", "api_key"):
+        val = getattr(body, field)
+        if val is not None:
+            config.set_override(f"llm.{backend}.{field}", val)
+            applied.append(field)
+    from . import llm
+    eff = llm.effective_llm_config()
+    return {"backend": backend, "applied": applied, "effective": eff}
+
+
+@app.post("/inbox/upload")
+async def inbox_upload(request: Request, filename: str = Query(...)):
+    """上传转录文件到 inbox。原始 body + filename 查询参数（免 multipart 依赖）。
+    前端：fetch('/inbox/upload?filename=day1.txt', {method:'POST', body: text})."""
+    if not filename.endswith((".txt", ".srt")):
+        raise HTTPException(400, "only .txt/.srt accepted")
+    inbox = config.inbox_dir()
+    inbox.mkdir(parents=True, exist_ok=True)
+    dest = inbox / filename
+    content = await request.body()
+    dest.write_bytes(content)
+    return {"saved": str(dest.relative_to(config.ROOT)), "bytes": len(content),
+            "ingest_hint": "POST /ingest to scan"}

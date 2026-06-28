@@ -123,6 +123,25 @@ def cmd_serve(args):
     uvicorn.run("personal_assistant.api:app", host=args.host, port=args.port, reload=False)
 
 
+def cmd_llm(args):
+    """查看生效 LLM 配置（5 旋钮 + key 掩码 + 思考原生字段预览）。"""
+    from . import llm as _llm
+    cfg = _llm.effective_llm_config()
+    if cfg.get("backend") == "stub":
+        print("backend: stub（智能桩，无网络）")
+        return
+    print(f"backend:          {cfg['backend']}")
+    print(f"model:            {cfg['model']}")
+    print(f"base_url(api):    {cfg['base_url']}")
+    print(f"api_key(masked):  {cfg['api_key_masked']}")
+    print(f"max_tokens:       {cfg['max_tokens']}")
+    print(f"thinking_effort:  {cfg['thinking_effort']}")
+    print(f"thinking_format:  {cfg['thinking_format']}")
+    print(f"native_preview:   {json.dumps(cfg['native_preview'], ensure_ascii=False)}")
+    if cfg.get("uses_max_completion_tokens"):
+        print("note:             OpenAI 推理模型 → 改发 max_completion_tokens（非 max_tokens）")
+
+
 def cmd_test(args):
     from tests.test_e2e import run
     sys.exit(0 if run() else 1)
@@ -143,6 +162,7 @@ def main(argv=None):
     rc = sub.add_parser("recommend"); rc.add_argument("kind", nargs="?", default="book", choices=["book","movie","action"]); rc.add_argument("query", nargs="?"); rc.set_defaults(func=cmd_recommend)
     w = sub.add_parser("wiki"); w.add_argument("action", choices=["build","list","search"]); w.add_argument("q", nargs="?"); w.set_defaults(func=cmd_wiki)
     sub.add_parser("status").set_defaults(func=cmd_status)
+    sub.add_parser("llm").set_defaults(func=cmd_llm)
     s = sub.add_parser("serve"); s.add_argument("--host", default="0.0.0.0"); s.add_argument("--port", type=int, default=8000); s.set_defaults(func=cmd_serve)
     sub.add_parser("test").set_defaults(func=cmd_test)
 

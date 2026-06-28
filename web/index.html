@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>全自动个人助手 · 控制面板</title>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.26.0/babel.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <style>
+    :root{
+      --bg:#0E1116;
+      --bg-elev:#161A22;
+      --bg-elev-2:#1C2230;
+      --border:#262D3B;
+      --border-soft:#1F2533;
+      --text:#E6EAF2;
+      --text-dim:#94A0B4;
+      --text-mute:#5B6577;
+      --indigo:#5B8DEF;
+      --indigo-soft:rgba(91,141,239,0.14);
+      --green:#3FB68B;
+      --green-soft:rgba(63,182,139,0.14);
+      --gold:#E0A458;
+      --gold-soft:rgba(224,164,88,0.16);
+      --red:#E0584F;
+      --red-soft:rgba(224,88,79,0.14);
+      --radius:12px;
+      --shadow:0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 24px rgba(0,0,0,0.32);
+      --font-sans:"PingFang SC","Source Han Sans CN","Noto Sans CJK SC",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    }
+    html,body,#root{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);}
+    *{box-sizing:border-box}
+    ::-webkit-scrollbar{width:8px;height:8px}
+    ::-webkit-scrollbar-thumb{background:#2A3142;border-radius:6px}
+    ::-webkit-scrollbar-track{background:transparent}
+    .glass{background:linear-gradient(180deg,rgba(255,255,255,0.025),rgba(255,255,255,0)) ,var(--bg-elev);border:1px solid var(--border-soft);border-radius:var(--radius);}
+    .mono{font-family:var(--font-mono);font-feature-settings:"tnum" 1,"ss01" 1;}
+    .grid-bg{
+      background-image:
+        radial-gradient(circle at 20% 0%,rgba(91,141,239,0.08),transparent 40%),
+        radial-gradient(circle at 90% 100%,rgba(63,182,139,0.05),transparent 40%);
+    }
+    .dot-pattern{
+      background-image: radial-gradient(rgba(255,255,255,0.05) 1px,transparent 1px);
+      background-size:14px 14px;
+    }
+    .chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;font-size:11px;line-height:18px;border:1px solid var(--border);background:var(--bg-elev-2);color:var(--text-dim);}
+    .chip-green{color:var(--green);background:var(--green-soft);border-color:rgba(63,182,139,0.3)}
+    .chip-gold{color:var(--gold);background:var(--gold-soft);border-color:rgba(224,164,88,0.3)}
+    .chip-indigo{color:var(--indigo);background:var(--indigo-soft);border-color:rgba(91,141,239,0.3)}
+    .chip-red{color:var(--red);background:var(--red-soft);border-color:rgba(224,88,79,0.3)}
+    .nav-item{transition:all .18s ease;}
+    .nav-item:hover{background:var(--bg-elev-2);color:var(--text);}
+    .nav-item.active{background:linear-gradient(180deg,rgba(91,141,239,0.18),rgba(91,141,239,0.04));color:var(--text);border-color:rgba(91,141,239,0.4);}
+    .nav-item.active .nav-icon{color:var(--indigo);}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:500;transition:all .18s ease;border:1px solid transparent;cursor:pointer;}
+    .btn-primary{background:var(--indigo);color:#fff;}
+    .btn-primary:hover{background:#6B9CFB;transform:translateY(-1px);box-shadow:0 6px 18px rgba(91,141,239,0.3);}
+    .btn-ghost{background:transparent;color:var(--text-dim);border-color:var(--border);}
+    .btn-ghost:hover{color:var(--text);border-color:#3A4358;background:var(--bg-elev-2);}
+    .input{width:100%;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:13px;font-family:inherit;outline:none;transition:all .18s;}
+    .input:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(91,141,239,0.15);}
+    .card-hover{transition:all .2s ease;}
+    .card-hover:hover{border-color:#33415A;transform:translateY(-2px);}
+    /* Tweaks panel */
+    .tweaks-panel{position:fixed;top:24px;right:24px;width:280px;background:rgba(22,26,34,0.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid #2D3548;border-radius:14px;padding:16px;z-index:9999;box-shadow:0 12px 48px rgba(0,0,0,0.5);font-family:var(--font-sans);}
+    .tweaks-panel h3{font-size:12px;text-transform:uppercase;letter-spacing:0.18em;color:var(--text-mute);margin:0 0 12px;display:flex;align-items:center;gap:6px;}
+    .tweaks-row{margin-bottom:12px;}
+    .tweaks-row label{display:block;font-size:11px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;}
+    .tweaks-row select,.tweaks-row input[type=range]{width:100%;background:#0E1116;border:1px solid #2A3142;color:var(--text);border-radius:6px;padding:6px 8px;font-size:12px;font-family:inherit;}
+    .seg-btns{display:flex;gap:4px;}
+    .seg-btn{flex:1;padding:6px 8px;background:#0E1116;border:1px solid #2A3142;color:var(--text-dim);border-radius:6px;font-size:11px;cursor:pointer;transition:all .15s;}
+    .seg-btn.active{background:var(--indigo-soft);border-color:var(--indigo);color:var(--indigo);}
+
+    /* density */
+    body[data-density="compact"] .pad-y{padding-top:8px;padding-bottom:8px}
+    body[data-density="cozy"] .pad-y{padding-top:14px;padding-bottom:14px}
+    body[data-density="comfy"] .pad-y{padding-top:20px;padding-bottom:20px}
+
+    /* accent */
+    body[data-accent="indigo"]{--indigo:#5B8DEF;--indigo-soft:rgba(91,141,239,0.14)}
+    body[data-accent="violet"]{--indigo:#8B7BEF;--indigo-soft:rgba(139,123,239,0.16)}
+    body[data-accent="teal"]{--indigo:#3FB6B0;--indigo-soft:rgba(63,182,176,0.16)}
+    body[data-accent="amber"]{--indigo:#E0A458;--indigo-soft:rgba(224,164,88,0.16)}
+
+    .skeleton-shimmer{background:linear-gradient(90deg,#1A1F2B 0%,#222837 50%,#1A1F2B 100%);background-size:200% 100%;animation:shimmer 1.4s infinite;border-radius:6px;}
+    @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    .tab-underline{position:relative}
+    .tab-underline.active::after{content:"";position:absolute;left:0;right:0;bottom:-9px;height:2px;background:var(--indigo);border-radius:2px;}
+
+    /* persona radar */
+    .radar-grid circle, .radar-grid line{stroke:#2A3142;fill:none;}
+    .radar-area{fill:rgba(91,141,239,0.18);stroke:var(--indigo);stroke-width:1.5}
+    .radar-label{fill:var(--text-dim);font-size:11px;font-family:var(--font-sans);}
+  </style>
+</head>
+<body data-accent="indigo" data-density="cozy">
+  <div id="root"></div>
+
+  <script>
+    var TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{"accent":"indigo","density":"cozy","showSource":"on"}/*EDITMODE-END*/;
+  </script>
+
+  <!-- 数据层（plain JS，先于 babel 执行；定义 window.PA） -->
+  <script src="api.js"></script>
+
+  <!-- 共享组件 -->
+  <script type="text/babel" src="Chips.jsx"></script>
+  <script type="text/babel" src="MockData.jsx"></script>
+  <script type="text/babel" src="Sidebar.jsx"></script>
+  <script type="text/babel" src="TweaksPanel.jsx"></script>
+
+  <!-- 业务页 -->
+  <script type="text/babel" src="DashboardPage.jsx"></script>
+  <script type="text/babel" src="InboxPage.jsx"></script>
+  <script type="text/babel" src="MemoriesPage.jsx"></script>
+  <script type="text/babel" src="PersonaPage.jsx"></script>
+  <script type="text/babel" src="CalendarPage.jsx"></script>
+  <script type="text/babel" src="RemindersPage.jsx"></script>
+  <script type="text/babel" src="ChatPage.jsx"></script>
+  <script type="text/babel" src="RecommendPage.jsx"></script>
+  <script type="text/babel" src="WikiPage.jsx"></script>
+  <script type="text/babel" src="VerifyPage.jsx"></script>
+  <script type="text/babel" src="SettingsPage.jsx"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function App(){
+      const [route,setRoute] = useState("dashboard");
+      const pages = {
+        dashboard: window.DashboardPage,
+        inbox: window.InboxPage,
+        memories: window.MemoriesPage,
+        persona: window.PersonaPage,
+        calendar: window.CalendarPage,
+        reminders: window.RemindersPage,
+        chat: window.ChatPage,
+        recommend: window.RecommendPage,
+        wiki: window.WikiPage,
+        verify: window.VerifyPage,
+        settings: window.SettingsPage,
+      };
+      const Page = pages[route] || (() => <div className="p-8 text-[var(--text-dim)]">页面加载中…</div>);
+
+      // 数据更新（bootstrap/写操作后 updateMock 派发 pa-update）→ 强制重渲染，页面重读 window.MockData
+      const [,force] = useState(0);
+      useEffect(()=>{
+        const h = () => force(x=>x+1);
+        window.addEventListener("pa-update", h);
+        return () => window.removeEventListener("pa-update", h);
+      },[]);
+
+      // segment 反查跳转事件
+      useEffect(()=>{
+        const handler = (e) => {
+          const { type, id } = e.detail || {};
+          if(type==="segment") { setRoute("inbox"); sessionStorage.setItem("hl_seg", id); }
+          else if(type==="memory") { setRoute("memories"); sessionStorage.setItem("hl_mem", id); }
+          else if(type==="persona") { setRoute("persona"); }
+        };
+        window.addEventListener("source-jump", handler);
+        return () => window.removeEventListener("source-jump", handler);
+      },[]);
+
+      return (
+        <div className="flex h-full">
+          <window.Sidebar route={route} onNavigate={setRoute} />
+          <main className="flex-1 overflow-y-auto grid-bg">
+            <Page onNavigate={setRoute} />
+          </main>
+          <window.TweaksPanel />
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    (async () => {
+      try { if (window.PA) await window.PA.bootstrap(); } catch (e) { /* 回落 mock */ }
+      root.render(<App />);
+    })();
+  </script>
+</body>
+</html>
