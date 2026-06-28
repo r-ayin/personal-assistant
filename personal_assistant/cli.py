@@ -91,8 +91,8 @@ def cmd_recommend(args):
 
 def cmd_wiki(args):
     if args.action == "build":
-        n = wiki.build()
-        print(f"built {n} wiki pages (反幻觉:source_ids 真实+body 落地源)")
+        r = wiki.build()
+        print(f"wiki build: {r}（new_pages+extended，增量；反幻觉:source_ids 真实+body 落地源）")
     elif args.action == "list":
         pages = wiki.retrieve()
         print(f"{len(pages)} wiki pages:")
