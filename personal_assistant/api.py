@@ -107,3 +107,15 @@ def recommend_api(kind: str = "book", q: str = Query(default="")):
     from . import recommend
     recs = recommend.recommend(kind=kind, query=q)
     return {"count": len(recs), "recommendations": recs}
+
+
+@app.get("/wiki")
+def wiki_list(tag: str = "", q: str = ""):
+    from . import wiki
+    return {"pages": wiki.retrieve(tag=tag, query=q)}
+
+
+@app.post("/wiki/build")
+def wiki_build():
+    from . import wiki
+    return {"built": wiki.build()}

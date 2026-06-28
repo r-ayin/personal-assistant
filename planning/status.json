@@ -4,14 +4,15 @@
   "currentStage": "development",
   "locked": true,
   "lockedReason": "用户直导式构建（2026-06-28）；后台自治循环已停",
-  "version": "0.3.0",
-  "mvpStatus": "v0.1 深核 + v0.2 说话人/日历/提醒/反幻觉/真实时间 + v0.3 推荐引擎 均端到端跑通（stub + 真 GLM-5.2 会话代理）",
-  "v03Feature": "推荐引擎:基于人格+记忆推荐书/影/做事方式,反幻觉溯源(引 persona/memory,不编造偏好)",
+  "version": "0.4.0",
+  "mvpStatus": "v0.1 深核 + v0.2 说话人/日历/提醒/反幻觉/真实时间 + v0.3 推荐联网搜索 + v0.4 个人wiki 均端到端跑通（stub + 真 GLM-5.2 会话代理）",
+  "v04Feature": "个人wiki:记忆→自动切片+LLM分类打标+编译互链主题页(title/body/tags/source_ids/links);反幻觉(source_ids真实+body落地源);按标签/词检索",
   "decisions": {
     "llm": "pluggable: local Ollama default + cloud GLM-5.2 (dev 会话代理可用)",
     "hardware": "user has GPU box (dev box has none)",
     "audio": "设备自带转录(无时间戳);inbox watch-dir;时间戳=收文记录时间(time_kind=received)",
-    "mvp": "core deep + 说话人/日历/提醒/反幻觉/推荐 (achieved)"
+    "web": "Bing(默认,免key) + 可切 ApiWebSearcher(用户配搜索API,tavily/generic)",
+    "mvp": "core deep + 说话人/日历/提醒/反幻觉/推荐/wiki (achieved)"
   },
   "deferred": ["Android app", "Web panel", "pyannote real voiceprint", "faster-whisper real model", "persona LoRA"],
   "lastUpdated": "2026-06-28"

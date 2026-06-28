@@ -42,6 +42,9 @@ CREATE INDEX IF NOT EXISTS idx_events_when ON events(when_dt);
 CREATE INDEX IF NOT EXISTS idx_reminders_when ON reminders(when_dt, fired);
 CREATE TABLE IF NOT EXISTS chat_log(
   id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT, content TEXT, created_at TEXT);
+CREATE TABLE IF NOT EXISTS wiki_pages(
+  id TEXT PRIMARY KEY, title TEXT, body TEXT, tags TEXT,
+  source_ids TEXT, link_ids TEXT, created_at TEXT);
 """
 
 
@@ -289,3 +292,43 @@ def chat_logs(limit: int = 50):
     with connect() as c:
         return [dict(r) for r in c.execute(
             "SELECT * FROM chat_log ORDER BY id DESC LIMIT ?", (limit,))]
+
+
+# ── 个人 wiki ───────────────────────────────────────────────────
+def add_wiki_page(p: dict):
+    import json as _j
+    wid = p.get("id") or f"wiki-{abs(hash(p.get('title', ''))) % 10**12}"
+    tags = p.get("tags", [])
+    src = p.get("source_ids", [])
+    links = p.get("links", [])
+    with connect() as c:
+        c.execute("INSERT OR REPLACE INTO wiki_pages(id,title,body,tags,source_ids,link_ids,created_at) "
+                  "VALUES(?,?,?,?,?,?,?)",
+                  (wid, _s(p.get("title")), _s(p.get("body")),
+                   _j.dumps(tags, ensure_ascii=False), _j.dumps(src, ensure_ascii=False),
+                   _j.dumps(links, ensure_ascii=False), now_iso()))
+        c.commit()
+    return wid
+
+
+def all_wiki_pages():
+    import json as _j
+    with connect() as c:
+        rows = [dict(r) for r in c.execute("SELECT * FROM wiki_pages ORDER BY created_at")]
+    for r in rows:
+        for k in ("tags", "source_ids", "link_ids"):
+            try:
+                r[k] = _j.loads(r[k]) if r.get(k) else []
+            except Exception:
+                r[k] = []
+    return rows
+
+
+def wiki_search(tag: str = "", query: str = ""):
+    pages = all_wiki_pages()
+    if tag:
+        pages = [p for p in pages if tag in (p.get("tags") or [])]
+    if query:
+        q = query.lower()
+        pages = [p for p in pages if q in (p.get("title", "") + p.get("body", "")).lower()]
+    return pages

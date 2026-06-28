@@ -81,6 +81,8 @@ class StubLLM(LLMClient):
             return json.dumps(self._resolve_range_stub(prompt), ensure_ascii=False)
         if task == "RECOMMEND":
             return json.dumps(self._recommend(prompt), ensure_ascii=False)
+        if task == "BUILD_WIKI":
+            return json.dumps(self._build_wiki(prompt), ensure_ascii=False)
         if task == "INTERVENTION":
             return self._intervention(prompt)
         # CHAT / 默认
@@ -246,6 +248,25 @@ class StubLLM(LLMClient):
             title = (r.get("title") or r.get("snippet") or "").strip()[:60]
             if title:
                 out.append({"item": title, "reason": f"来自联网搜索，结合你的{base}特质", "based_on": base})
+        return out
+
+    def _build_wiki(self, prompt: str) -> list[dict]:
+        """记忆按 kind 分组→每类一页,body=该类记忆要点,source_ids=真实记忆 id。"""
+        mems = self._block_json(prompt, "Memories (JSON):")
+        if not isinstance(mems, list):
+            return []
+        by_kind = {}
+        for m in mems:
+            if not isinstance(m, dict):
+                continue
+            by_kind.setdefault(m.get("kind", "event"), []).append(m)
+        out = []
+        for k, ms in by_kind.items():
+            body = "\n".join(f"- {m.get('content', '')[:60]}" for m in ms)
+            out.append({"title": f"{k}主题",
+                        "body": body, "tags": [k],
+                        "source_ids": [m.get("id") for m in ms if m.get("id")],
+                        "links": []})
         return out
 
     def _chat(self, prompt: str) -> str:
