@@ -5,7 +5,7 @@ import json
 import sys
 
 from . import (config, storage, asr, memory, distill, proactive, chat,
-               ingest, calendar, reminders, speaker, verify)
+               ingest, calendar, reminders, speaker, verify, recommend)
 
 
 def cmd_pipeline(args):
@@ -81,6 +81,14 @@ def cmd_speakers(args):
         print(f"  {s['name']}  label={s.get('label','')}  {s.get('note','')}")
 
 
+def cmd_recommend(args):
+    recs = recommend.recommend(kind=args.kind, query=args.query or "")
+    print(f"{len(recs)} 推荐 (kind={args.kind}, 已反幻觉过滤):")
+    for r in recs:
+        print(f"  - {r.get('item')}  ← {r.get('based_on')}")
+        print(f"      {r.get('reason')}")
+
+
 def cmd_status(args):
     with storage.connect() as c:
         nseg = c.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
@@ -115,6 +123,7 @@ def main(argv=None):
     c = sub.add_parser("calendar"); c.add_argument("query", nargs="?"); c.add_argument("--list", action="store_true"); c.set_defaults(func=cmd_calendar)
     r = sub.add_parser("reminders"); r.add_argument("--check", action="store_true"); r.set_defaults(func=cmd_reminders)
     sub.add_parser("speakers").set_defaults(func=cmd_speakers)
+    rc = sub.add_parser("recommend"); rc.add_argument("kind", nargs="?", default="book", choices=["book","movie","action"]); rc.add_argument("query", nargs="?"); rc.set_defaults(func=cmd_recommend)
     sub.add_parser("status").set_defaults(func=cmd_status)
     s = sub.add_parser("serve"); s.add_argument("--host", default="0.0.0.0"); s.add_argument("--port", type=int, default=8000); s.set_defaults(func=cmd_serve)
     sub.add_parser("test").set_defaults(func=cmd_test)

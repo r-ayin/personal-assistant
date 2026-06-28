@@ -4,22 +4,15 @@
   "currentStage": "development",
   "locked": true,
   "lockedReason": "用户直导式构建（2026-06-28）；后台自治循环已停",
-  "version": "0.2.0",
-  "mvpStatus": "v0.1 深核 + v0.2 说话人/日历/提醒/反幻觉 均端到端跑通（stub + 真 GLM-5.2 会话代理）",
-  "v02Features": [
-    "设备自带转录→接入改转录文本驱动（ASR 降为可选回退）",
-    "说话人区分：TextDiarizer(dev)+PyannoteDiarizer(prod,GPU盒,音频+文字融合)",
-    "自动日历：事件抽取+temporal确定性日期解析+检索",
-    "定时提醒：意图抽取+确定性解析+到点触发(循环重排)",
-    "反幻觉 verify：when_dt确定性重解覆盖+when_raw/记忆溯源+不落地即删+assert",
-    "真实时间戳：now_iso系统本地实时；chat_log对话存档"
-  ],
+  "version": "0.3.0",
+  "mvpStatus": "v0.1 深核 + v0.2 说话人/日历/提醒/反幻觉/真实时间 + v0.3 推荐引擎 均端到端跑通（stub + 真 GLM-5.2 会话代理）",
+  "v03Feature": "推荐引擎:基于人格+记忆推荐书/影/做事方式,反幻觉溯源(引 persona/memory,不编造偏好)",
   "decisions": {
-    "llm": "pluggable: local Ollama default + cloud GLM-5.2 (dev 实测会话代理可用)",
+    "llm": "pluggable: local Ollama default + cloud GLM-5.2 (dev 会话代理可用)",
     "hardware": "user has GPU box (dev box has none)",
-    "audio": "设备已自带转录；inbox watch-dir 收 .txt/.srt(+可选音频)",
-    "mvp": "core deep + 说话人/日历/提醒/反幻觉 (achieved)"
+    "audio": "设备自带转录(无时间戳);inbox watch-dir;时间戳=收文记录时间(time_kind=received)",
+    "mvp": "core deep + 说话人/日历/提醒/反幻觉/推荐 (achieved)"
   },
-  "deferred": ["recommendation deep-dive", "Android app", "Web panel", "pyannote real voiceprint", "faster-whisper real model"],
+  "deferred": ["Android app", "Web panel", "pyannote real voiceprint", "faster-whisper real model", "persona LoRA"],
   "lastUpdated": "2026-06-28"
 }

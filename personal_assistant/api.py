@@ -100,3 +100,10 @@ def reminders_check():
 @app.get("/speakers")
 def speakers():
     return {"speakers": storage.speakers_all()}
+
+
+@app.get("/recommend")
+def recommend_api(kind: str = "book", q: str = Query(default="")):
+    from . import recommend
+    recs = recommend.recommend(kind=kind, query=q)
+    return {"count": len(recs), "recommendations": recs}
