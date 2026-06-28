@@ -251,22 +251,39 @@ class StubLLM(LLMClient):
         return out
 
     def _build_wiki(self, prompt: str) -> list[dict]:
-        """记忆按 kind 分组→每类一页,body=该类记忆要点,source_ids=真实记忆 id。"""
-        mems = self._block_json(prompt, "Memories (JSON):")
-        if not isinstance(mems, list):
-            return []
+        """增量：新记忆按 kind 分组；已有页匹配该 kind→扩展(union source_ids+body 覆盖旧+新)；否则建新页。"""
+        new_mems = self._block_json(prompt, "New memories (JSON):")
+        existing = self._block_json(prompt, "Existing wiki pages (JSON):")
+        if not isinstance(new_mems, list):
+            new_mems = []
+        if not isinstance(existing, list):
+            existing = []
         by_kind = {}
-        for m in mems:
+        for m in new_mems:
             if not isinstance(m, dict):
                 continue
             by_kind.setdefault(m.get("kind", "event"), []).append(m)
         out = []
         for k, ms in by_kind.items():
-            body = "\n".join(f"- {m.get('content', '')[:60]}" for m in ms)
-            out.append({"title": f"{k}主题",
-                        "body": body, "tags": [k],
-                        "source_ids": [m.get("id") for m in ms if m.get("id")],
-                        "links": []})
+            ex = None
+            for p in existing:
+                tags = p.get("tags", []) if isinstance(p.get("tags"), list) else []
+                if k in tags or k in (p.get("title") or ""):
+                    ex = p
+                    break
+            new_ids = [m.get("id") for m in ms if m.get("id")]
+            if ex:
+                old_c = ex.get("source_contents", []) or []
+                body = "\n".join(f"- {c[:60]}" for c in old_c) + "\n" + \
+                       "\n".join(f"- {m.get('content', '')[:60]}" for m in ms)
+                src = (ex.get("source_ids", []) or []) + new_ids
+                out.append({"title": ex["title"], "body": body,
+                            "tags": ex.get("tags", []) or [k],
+                            "source_ids": src, "links": []})
+            else:
+                body = "\n".join(f"- {m.get('content', '')[:60]}" for m in ms)
+                out.append({"title": f"{k}主题", "body": body, "tags": [k],
+                            "source_ids": new_ids, "links": []})
         return out
 
     def _chat(self, prompt: str) -> str:

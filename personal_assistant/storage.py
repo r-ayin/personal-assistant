@@ -332,3 +332,19 @@ def wiki_search(tag: str = "", query: str = ""):
         q = query.lower()
         pages = [p for p in pages if q in (p.get("title", "") + p.get("body", "")).lower()]
     return pages
+
+
+# ── wiki 增量: 已 wikified 的记忆 id（kv，不改 schema）──────────
+def wikified_ids() -> set:
+    import json as _j
+    raw = kv_get("wikified_mem_ids")
+    try:
+        return set(_j.loads(raw)) if raw else set()
+    except Exception:
+        return set()
+
+
+def mark_wikified(ids) -> None:
+    import json as _j
+    cur = wikified_ids() | set(ids)
+    kv_set("wikified_mem_ids", _j.dumps(list(cur), ensure_ascii=False))

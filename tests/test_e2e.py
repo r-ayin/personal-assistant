@@ -129,16 +129,30 @@ def run() -> bool:
         if not r.get("item") or not r.get("based_on"):
             fails.append(f"recommend 项缺 item/based_on: {r}")
 
-    # 12. 个人 wiki（记忆→自动切片+分类+源引用，反幻觉）
-    wn = wiki.build()
-    print(f"[12] wiki built: {wn} pages")
-    if wn < 1:
+    # 12. 个人 wiki（增量编译 + 反幻觉）
+    r12 = wiki.build()
+    print(f"[12] wiki build: {r12}")
+    if r12.get("new_pages", 0) + r12.get("extended", 0) < 1:
         fails.append("wiki 未编译出页面")
     else:
         try:
             wiki.assert_grounded()
         except AssertionError as e:
             fails.append(f"wiki 幻觉: {e}")
+    # 12b. 增量：灌第 2 份转录（含新内容）→ 再 build → wiki 增长（扩展或新页）
+    pages_before = len(storage.all_wiki_pages())
+    (config.inbox_dir() / "day2.txt").write_text(
+        "最近在学吉他，想组个乐队。\n下周要去听一场爵士乐演出，很期待。\n我喜欢爵士乐的即兴。",
+        encoding="utf-8")
+    ingest.scan_inbox()
+    r12b = wiki.build()
+    print(f"[12b] 2nd build: {r12b}, pages {pages_before}→{len(storage.all_wiki_pages())}")
+    if r12b.get("new_pages", 0) + r12b.get("extended", 0) < 1:
+        fails.append("wiki 增量未处理新记忆（应扩展/新页）")
+    try:
+        wiki.assert_grounded()
+    except AssertionError as e:
+        fails.append(f"wiki(2nd) 幻觉: {e}")
 
     if fails:
         print("\n❌ FAIL:")
