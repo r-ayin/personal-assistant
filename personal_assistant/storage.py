@@ -137,10 +137,11 @@ def save_persona_version(profile: dict, change_summary: str) -> int:
         c.execute("INSERT INTO persona_versions(version,created_at,profile_json,change_summary) VALUES(?,?,?,?)",
                   (v, now_iso(), json.dumps(profile, ensure_ascii=False), change_summary))
         c.commit()
-    # 落盘最新版
     p = config.persona_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(profile, ensure_ascii=False, indent=2), encoding="utf-8")
+    stamped = {**profile, "_meta": {"version": v, "updated_at": now_iso(),
+                                     "change_summary": change_summary}}
+    p.write_text(json.dumps(stamped, ensure_ascii=False, indent=2), encoding="utf-8")
     return v
 
 
