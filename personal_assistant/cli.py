@@ -5,7 +5,7 @@ import json
 import sys
 
 from . import (config, storage, asr, memory, distill, proactive, chat,
-               ingest, calendar, reminders, speaker, verify, recommend)
+               ingest, calendar, reminders, speaker, verify, recommend, wiki)
 
 
 def cmd_pipeline(args):
@@ -89,6 +89,23 @@ def cmd_recommend(args):
         print(f"      {r.get('reason')}")
 
 
+def cmd_wiki(args):
+    if args.action == "build":
+        n = wiki.build()
+        print(f"built {n} wiki pages (反幻觉:source_ids 真实+body 落地源)")
+    elif args.action == "list":
+        pages = wiki.retrieve()
+        print(f"{len(pages)} wiki pages:")
+        for p in pages:
+            print(f"  [{','.join(p.get('tags', []))}] {p['title']}  (src:{len(p.get('source_ids', []))})")
+    elif args.action == "search":
+        pages = wiki.retrieve(tag=args.q, query=args.q)
+        print(f"{len(pages)} pages for '{args.q}':")
+        for p in pages:
+            print(f"  == {p['title']} ==")
+            print(f"     {p.get('body', '')[:120]}")
+
+
 def cmd_status(args):
     with storage.connect() as c:
         nseg = c.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
@@ -124,6 +141,7 @@ def main(argv=None):
     r = sub.add_parser("reminders"); r.add_argument("--check", action="store_true"); r.set_defaults(func=cmd_reminders)
     sub.add_parser("speakers").set_defaults(func=cmd_speakers)
     rc = sub.add_parser("recommend"); rc.add_argument("kind", nargs="?", default="book", choices=["book","movie","action"]); rc.add_argument("query", nargs="?"); rc.set_defaults(func=cmd_recommend)
+    w = sub.add_parser("wiki"); w.add_argument("action", choices=["build","list","search"]); w.add_argument("q", nargs="?"); w.set_defaults(func=cmd_wiki)
     sub.add_parser("status").set_defaults(func=cmd_status)
     s = sub.add_parser("serve"); s.add_argument("--host", default="0.0.0.0"); s.add_argument("--port", type=int, default=8000); s.set_defaults(func=cmd_serve)
     sub.add_parser("test").set_defaults(func=cmd_test)

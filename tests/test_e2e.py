@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from personal_assistant import (config, storage, ingest, memory, distill, proactive,
-                                chat, calendar, reminders, speaker, verify, recommend)
+                                chat, calendar, reminders, speaker, verify, recommend, wiki)
 
 # A 话多且多用"我"→ TextDiarizer 识别为 user；B→他人
 SAMPLE = """A: 明天下午三点要开项目会。
@@ -128,6 +128,17 @@ def run() -> bool:
     for r in recs:
         if not r.get("item") or not r.get("based_on"):
             fails.append(f"recommend 项缺 item/based_on: {r}")
+
+    # 12. 个人 wiki（记忆→自动切片+分类+源引用，反幻觉）
+    wn = wiki.build()
+    print(f"[12] wiki built: {wn} pages")
+    if wn < 1:
+        fails.append("wiki 未编译出页面")
+    else:
+        try:
+            wiki.assert_grounded()
+        except AssertionError as e:
+            fails.append(f"wiki 幻觉: {e}")
 
     if fails:
         print("\n❌ FAIL:")
