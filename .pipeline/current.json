@@ -1,0 +1,8 @@
+{
+  "kind": "small",
+  "desc": "add pipeline-gate ref comment to __init__",
+  "stage": "development",
+  "verify_passed": true,
+  "started_at": "2026-06-28T08:13:58+08:00",
+  "updated_at": "2026-06-28T08:13:58+08:00"
+}
