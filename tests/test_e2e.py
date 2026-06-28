@@ -163,6 +163,10 @@ def run() -> bool:
     return True
 
 
+def test_stub_e2e():
+    assert run(), "e2e pipeline failed — see stdout for details"
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(0 if run() else 1)
