@@ -32,13 +32,15 @@ def _cn_to_int(s: str) -> int:
 
 
 def _parse_hm(s: str, ref_hour_default: int = 9):
-    m = re.search(rf"({NUM})\s*[点时：:]\s*({NUM})?\s*分?|({NUM})\s*[点时]\s*半", s)
+    m = re.search(rf"({NUM})\s*[点时]\s*半|({NUM})\s*[点时：:]\s*({NUM})?\s*分?", s)
     if not m:
         return None
-    if m.group(3):  # X点半
-        return _cn_to_int(m.group(3)), 30
-    h = _cn_to_int(m.group(1))
-    mm = _cn_to_int(m.group(2)) if m.group(2) else 0
+    if m.group(1):  # X点半 — must be tried before X点(Y分)? to avoid greedy swallow
+        h = _cn_to_int(m.group(1))
+        mm = 30
+    else:
+        h = _cn_to_int(m.group(2))
+        mm = _cn_to_int(m.group(3)) if m.group(3) else 0
     if re.search(r"下午|傍晚|晚上|晚间|pm|PM", s) and h < 12:
         h += 12
     if re.search(r"凌晨|深夜", s) and h == 12:
