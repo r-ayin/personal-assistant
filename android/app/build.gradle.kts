@@ -65,8 +65,6 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.51.1")
     kapt("com.google.dagger:hilt-compiler:2.51.1")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
-    implementation("androidx.hilt:hilt-work:1.1.0")
-    kapt("androidx.hilt:hilt-compiler:1.1.0")
 
     // 网络: Retrofit + OkHttp + kotlinx.serialization（对齐后端 REST/JSON 契约）
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
@@ -78,10 +76,7 @@ dependencies {
     // DataStore（BASE_URL / 鉴权 token / 主题，加密由 EncryptedDataStore 扩展）
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
-    // WorkManager（ingest 周期 / reminders-check / 上传 retry）
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
-
-    // Lottie（蒸馏生成 / 空状态 / listening 波形动画）
+    // Lottie（蒸馏生成 / 空状态动画）
     implementation("com.airbnb.android:lottie-compose:6.3.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")

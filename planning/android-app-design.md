@@ -3,6 +3,8 @@
 > 版本 v0.6-design · 2026-06-29 · 对齐后端 v0.5（FastAPI 21 端点 + SQLite/DuckDB + 可插拔 LLM）
 > 状态：**设计稿**（未实现）。放置路径：`personal-assistant/planning/android-app-design.md`
 > 配套：`planning/frontend-design.md`（Web 端 14 节）、`planning/prd-llm-config.md`、`web/`（已落地 Web 控制面板）
+>
+> **⚠️ 定位修正（2026-06-29 用户澄清，实现以此为准）**：app = **纯前端显示 + 对话**。数据、ASR/转录、记忆/蒸馏/解析全部跑在电脑/服务器大脑；**录音/转录由硬件设备直发电脑，app 不参与**。故本稿 §3.2 InboxPage（上传转录）与 §4 前台录音服务 ListeningService **已从实现中移除**；app 实际屏为 10 个（chat/memory/persona/calendar/reminder/verify/recommend/wiki/settings/dashboard）。下方原文保留作历史设计记录。
 
 ---
 

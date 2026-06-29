@@ -1,6 +1,6 @@
 # Personal Assistant — Android App
 
-Kotlin + Jetpack Compose + Material 3，随身端：对话 / 被动录音上传 / 提醒通知。仅经 REST 消费后端大脑（`personal-assistant/personal_assistant/api.py`，21 端点）。设计稿见 `planning/android-app-design.md`。
+Kotlin + Jetpack Compose + Material 3，**纯前端显示 + 对话**端。数据、ASR/转录、记忆/蒸馏/解析等后端功能全部跑在电脑/服务器上的"大脑"（`personal-assistant/personal_assistant/api.py`，21 端点）。**录音/转录由硬件设备直发电脑，app 不参与**——app 只经 REST 取数据展示 + 发对话。设计稿见 `planning/android-app-design.md`。
 
 ## ⚠️ 本开发盒不能编译
 此盒无 Android SDK / Gradle / javac（仅 JRE 21），网络受限下不动 Android 工具链。**源码已写齐，验证构建请在有 Android Studio 的机器进行**：
@@ -15,8 +15,8 @@ com.personalassistant
  ├─ ui/components TimeChip/SourceChip/VerifyBadge/Timeline（反幻觉可见性载体）
  ├─ ui/nav        PaApp（NavHost + 底部 NavigationBar，11 屏路由）
  ├─ data          AppConfig(DataStore) / PaClient(动态 BASE_URL) / PaRepository / DiModule(Hilt) / api.PaApi / model.Dtos
- ├─ feature/*     各屏 ViewModel + Screen（chat 已实现，余 Phase 2）
- └─ service       NotificationChannels / ListeningService(Phase 2)
+ ├─ feature/*     各屏 ViewModel + Screen（10 屏：chat/memory/persona/calendar/reminder/verify/recommend/wiki/settings/dashboard）
+ └─ service       NotificationChannels（到点提醒通道；无录音/前台服务）
 ```
 
 ## 三条硬约束（贯穿）
@@ -28,6 +28,7 @@ com.personalassistant
 见 `planning/android-app-design.md` §6 总表。`PaApi` 21 端点全声明；DTO 字段对齐 `api.py` 真实 shape。
 
 ## 阶段
-- ✅ Phase 1：工程脚手架 + 主题 + 组件 + 数据层 + 导航 + Chat 屏（参考实现）
-- ⏳ Phase 2：memory/persona/calendar/reminder/verify/recommend/wiki/inbox/settings/dashboard 10 屏 + ListeningService + WorkManager
-- ⏳ Phase 3：通知跳深链 + 权限请求时序 + 整合自检
+- ✅ Phase 1：工程脚手架 + 主题 + 组件 + 数据层 + 导航 + Chat 屏
+- ✅ Phase 2：memory/persona/calendar/reminder/verify/recommend/wiki/settings/dashboard 9 屏（全接真后端）
+- ✅ 定位修正（2026-06-29）：app = 纯前端显示+对话；录音/转录由硬件设备→电脑，app 不参与。已移除 ListeningService/UploadTranscriptWorker/Inbox 屏/录音权限/WorkManager。
+- ⏳ Phase 3：到点提醒通知（轮询 /reminders/check 或服务器推送）+ 整合自检
