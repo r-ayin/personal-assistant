@@ -2,22 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- 网络 -->
+    <!-- 纯前端：只需联网。通知权限留给未来到点提醒推送。 -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- 24h 被动听 -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <!-- 通知（Android 13+ 运行时） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- 前台服务（录音，Android 14+ 须声明 microphone 子类型） -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <!-- 精确提醒（Android 12+ 需用户授权 SCHEDULE_EXACT_ALARM） -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- 开机自启 listening（可选） -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- 录音 / 前台服务 / 麦克风权限已移除：录音由硬件设备直发电脑，app 不参与。 -->
 
     <application
         android:name=".PersonalAssistantApp"
@@ -27,18 +19,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.PersonalAssistant"
         tools:targetApi="34">
-
-        <!-- 用 HiltWorkerFactory 接管 WorkManager，禁用默认 startup 初始化 -->
-        <provider
-            android:name="androidx.startup.InitializationProvider"
-            android:authorities="${applicationId}.androidx-startup"
-            android:exported="false"
-            tools:node="merge">
-            <meta-data
-                android:name="androidx.work.WorkManagerInitializer"
-                android:value="androidx.startup"
-                tools:node="remove" />
-        </provider>
 
         <activity
             android:name=".MainActivity"
@@ -50,12 +30,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- 24h 被动听前台服务（Phase 2/3 完整实现） -->
-        <service
-            android:name=".service.ListeningService"
-            android:exported="false"
-            android:foregroundServiceType="microphone" />
 
     </application>
 

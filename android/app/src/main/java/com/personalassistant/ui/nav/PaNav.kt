@@ -1,8 +1,5 @@
 package com.personalassistant.ui.nav
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Chat
@@ -14,7 +11,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -27,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -35,7 +30,6 @@ import androidx.navigation.compose.rememberNavController
 import com.personalassistant.feature.calendar.CalendarScreen
 import com.personalassistant.feature.chat.ChatScreen
 import com.personalassistant.feature.dashboard.DashboardScreen
-import com.personalassistant.feature.inbox.InboxScreen
 import com.personalassistant.feature.memory.MemoryScreen
 import com.personalassistant.feature.persona.PersonaScreen
 import com.personalassistant.feature.recommend.RecommendScreen
@@ -43,14 +37,12 @@ import com.personalassistant.feature.reminder.ReminderScreen
 import com.personalassistant.feature.settings.SettingsScreen
 import com.personalassistant.feature.verify.VerifyScreen
 import com.personalassistant.feature.wiki.WikiScreen
-import com.personalassistant.service.ListeningService
 
 object Routes {
     const val CHAT = "chat"
     const val MEMORY = "memory"
     const val CALENDAR = "calendar"
     const val DASHBOARD = "dashboard"   // "我的"
-    const val INBOX = "inbox"
     const val PERSONA = "persona"
     const val REMINDER = "reminder"
     const val VERIFY = "verify"
@@ -71,7 +63,6 @@ private val TABS = listOf(
 private data class Overflow(val route: String, val label: String)
 
 private val OVERFLOW = listOf(
-    Overflow(Routes.INBOX, "录音 / 上传转录"),
     Overflow(Routes.PERSONA, "数字分身"),
     Overflow(Routes.REMINDER, "提醒"),
     Overflow(Routes.VERIFY, "反幻觉体检"),
@@ -84,7 +75,6 @@ private val OVERFLOW = listOf(
 @Composable
 fun PaApp() {
     val nav = rememberNavController()
-    val ctx = LocalContext.current
     val backStack by nav.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
     var menuOpen by remember { mutableStateOf(false) }
@@ -94,10 +84,6 @@ fun PaApp() {
             TopAppBar(
                 title = { Text(TABS.firstOrNull { it.route == current }?.label ?: "个人助手") },
                 actions = {
-                    // 麦克风：启动 24h 被动听前台服务（运行时须先获 RECORD_AUDIO 权限，见设计稿§4.6）
-                    IconButton(onClick = { ListeningService.start(ctx) }) {
-                        Icon(Icons.Filled.Person, contentDescription = "开始听") // 复用图标；正式版换 Mic
-                    }
                     IconButton(onClick = { menuOpen = true }) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "更多")
                     }
@@ -140,7 +126,6 @@ fun PaApp() {
             composable(Routes.MEMORY) { MemoryScreen() }
             composable(Routes.CALENDAR) { CalendarScreen() }
             composable(Routes.DASHBOARD) { DashboardScreen() }
-            composable(Routes.INBOX) { InboxScreen() }
             composable(Routes.PERSONA) { PersonaScreen() }
             composable(Routes.REMINDER) { ReminderScreen() }
             composable(Routes.VERIFY) { VerifyScreen() }
