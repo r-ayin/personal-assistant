@@ -1,17 +1,14 @@
 package com.personalassistant.ui.theme
 
-import android.app.Activity
 import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
-private val PaDarkColors = darkColorScheme(
+// 动森风：明亮、暖奶油、柔和。默认亮主题。
+private val PaColors = lightColorScheme(
     background = PaBackground,
     surface = PaSurface,
     surfaceVariant = PaSurfaceVariant,
@@ -28,29 +25,16 @@ private val PaDarkColors = darkColorScheme(
     outline = PaOutline,
 )
 
-private val PaLightColors = lightColorScheme(
-    primary = PaPrimary,
-    secondary = PaSecondary,
-    tertiary = PaTertiary,
-    error = PaError,
-)
-
 /**
- * App 默认暗主题。语义色（绿=溯源/金=反幻觉/红=警示）强相关，故默认**关闭**动态取色
- * 以保语义稳定；用户开"跟随系统壁纸"时才用 dynamicColorScheme 并回退到 PaDarkColors。
+ * 动森 Pocket Camp 风：默认亮、暖奶油底、大圆角。动态取色默认关（保 AC 调色板稳定）。
  */
 @Composable
 fun PersonalAssistantTheme(
-    darkTheme: Boolean = true,                       // 默认暗
-    dynamicColor: Boolean = false,                   // 默认关动态取色
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val ctx = LocalContext.current
-    val scheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
-            if (darkTheme) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
-        darkTheme -> PaDarkColors
-        else -> PaLightColors
-    }
-    MaterialTheme(colorScheme = scheme, typography = PaTypography, content = content)
+    val scheme = if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        dynamicLightColorScheme(ctx) else PaColors
+    MaterialTheme(colorScheme = scheme, typography = PaTypography, shapes = PaShapes, content = content)
 }

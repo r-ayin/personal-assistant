@@ -5,8 +5,12 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 
-// 正文 14/16、标题 20/24（对齐设计稿）。中文优先 PingFang/思源黑体由系统兜底；
-// 如需内置字体，放 res/font 后在此引用 FontFamily(Font(R.font.xxx))。
+// 动森 Pocket Camp 风：圆润、亲切、略 chunky。
+// ⚠️ 系统 Roboto/Noto 不圆润。要真正 AC 圆体效果，把字体放进 res/font/ 后改：
+//    - 拉丁：Nunito / Quicksand / Comfortaa（Google Fonts，免费）
+//    - 中文圆体：站酷快乐体 / 悠哉字体 / Fusion Pixel 圆体（免费）
+//    然后 FontFamily(Font(R.font.nunito), Font(R.font.<rounded_cjk>))
+// 当前用系统兜底，靠配色+大圆角+软阴影承载 AC 感。
 val PaFontFamily = FontFamily.Default
 
 val PaTypography = Typography(
