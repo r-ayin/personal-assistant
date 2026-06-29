@@ -3,10 +3,16 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- 动森风叶子 logo -->
     <path
-        android:fillColor="#5B8DEF"
-        android:pathData="M54,32 m-12,0 a12,12 0 1,0 24,0 a12,12 0 1,0 -24,0" />
+        android:fillColor="#4F9D5C"
+        android:pathData="M54,28 C70,28 82,42 82,58 C82,74 70,84 54,84 C46,76 40,66 40,54 C40,42 46,34 54,28 Z" />
     <path
-        android:fillColor="#5B8DEF"
-        android:pathData="M42,52 L66,52 L66,80 L42,80 z M48,56 L60,56 L60,60 L48,60 z" />
+        android:fillColor="#5BAA6A"
+        android:pathData="M54,30 C66,34 74,46 74,58 C74,70 66,78 56,80 C52,70 50,60 50,50 C50,42 52,35 54,30 Z" />
+    <path
+        android:fillColor="#3F8A4D"
+        android:pathData="M54,34 L54,80"
+        android:strokeColor="#3F8A4D"
+        android:strokeWidth="2" />
 </vector>
