@@ -18,3 +18,6 @@ data/persona/*
 
 # pipeline-gate 运行态（triage current/history，见 /home/admin/workspace/PIPELINE-GATE.md）
 .pipeline/
+
+# opt-worktree 方向标记桩（运行态元数据，永不追踪；曾误入 HEADtracked-leak）
+.opt-direction
