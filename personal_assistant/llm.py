@@ -508,6 +508,15 @@ def get_llm() -> LLMClient:
         return OpenAICompatLLM(f["base_url"], f["api_key"], f["model"],
                                f["max_tokens"], f["thinking_effort"],
                                f["thinking_format"] or "glm")
+    if backend == "deepseek":
+        # DeepSeek 走 OpenAI 兼容 /chat/completions；flash 非推理模型，thinking 默认 off
+        return OpenAICompatLLM(f["base_url"], f["api_key"], f["model"],
+                               f["max_tokens"], f["thinking_effort"],
+                               f["thinking_format"] or "openai")
+    if backend == "deepseek_anthropic":
+        # DeepSeek Anthropic 兼容端点(/anthropic)，可走 thinking budget_tokens（镜像 glm_anthropic）
+        return GLMAnthropicLLM(f["base_url"], f["api_key"], f["model"],
+                               f["max_tokens"], f["thinking_effort"], "anthropic")
     raise ValueError(f"unknown llm backend: {backend}")
 
 
