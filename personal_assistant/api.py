@@ -158,14 +158,6 @@ async def ws_audio(ws: WebSocket):
         return
     await ws.accept()
 
-    # Lazy Opus 解码器
-    try:
-        import opuslib
-        _decoder = opuslib.Decoder(16000, 1)
-    except ImportError:
-        log.warning("opuslib 未装，背景 Opus 解码不可用（GPU 电脑: pip install opuslib）")
-        _decoder = None
-
     # VAD 切段器（内联精简版，零依赖）
     class _Vad:
         def __init__(self, threshold=350, holdout=500, min_utt=300):
@@ -237,15 +229,12 @@ async def ws_audio(ws: WebSocket):
                 continue
             frame_type = raw[0]
 
-            if frame_type == 0:  # Opus 帧
-                if _decoder and len(raw) > 1:
-                    try:
-                        pcm = _decoder.decode(bytes(raw[1:]), 960)
-                        for seg in segmenter.feed(bytes(pcm)):
-                            await _save_bg_segment(seg, inbox_dir, session_id)
-                            wav_count += 1
-                    except Exception as e:
-                        log.debug("opus decode: %s", e)
+            if frame_type == 0:  # PCM 帧
+                # PCM 16kHz 16bit mono, raw data starts after type byte
+                pcm = raw[1:]
+                for seg in segmenter.feed(pcm):
+                    await _save_bg_segment(seg, inbox_dir, session_id)
+                    wav_count += 1
 
             elif frame_type == 1:  # 段结束
                 for seg in segmenter.flush():

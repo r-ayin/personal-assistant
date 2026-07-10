@@ -28,6 +28,11 @@ jobs:
           echo "CONFIG_PC_PORT=${{ github.event.inputs.pc_port }}" >> sdkconfig.defaults
           cat sdkconfig.defaults.esp32s3 >> sdkconfig.defaults
 
+      - name: Install system deps
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq libopus-dev
+
       - name: Build firmware
         run: |
           . /opt/esp/idf/export.sh > /dev/null 2>&1
