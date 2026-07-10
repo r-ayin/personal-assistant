@@ -37,8 +37,9 @@ jobs:
         run: |
           . /opt/esp/idf/export.sh > /dev/null 2>&1
           cd scripts/xiaozhi-esp32
+          # 禁用组件管理器（Docker 内无网络解析），组件已在镜像内预装
+          export IDF_COMPONENT_MANAGER=0
           idf.py set-target esp32s3
-          idf.py reconfigure
           idf.py build
           python3 -m esptool --chip esp32s3 merge_bin -o build/merged-flash.bin @build/flash_args
 
