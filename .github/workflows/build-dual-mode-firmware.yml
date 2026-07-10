@@ -14,50 +14,37 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container:
+      image: espressif/idf:v5.5
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install ESP-IDF v5.5
-        run: |
-          # Install dependencies
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq git wget flex bison gperf python3 python3-pip \
-            cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
-          # Clone ESP-IDF (shallow)
-          git clone --depth 1 --single-branch --branch v5.5 \
-            https://github.com/espressif/esp-idf.git $HOME/esp-idf
-          # Install toolchain
-          python3 $HOME/esp-idf/tools/idf_tools.py install cmake 2>/dev/null || true
-          python3 $HOME/esp-idf/tools/idf_tools.py install-python-env
-          source $HOME/esp-idf/export.sh
-
-      - name: Configure dual-mode
+      - name: Apply dual-mode config
         run: |
           cd scripts/xiaozhi-esp32
           echo "CONFIG_BG_AUDIO_ENABLE=y" >> sdkconfig.defaults
           echo 'CONFIG_PC_IP="${{ github.event.inputs.pc_ip }}"' >> sdkconfig.defaults
           echo "CONFIG_PC_PORT=${{ github.event.inputs.pc_port }}" >> sdkconfig.defaults
           cat sdkconfig.defaults.esp32s3 >> sdkconfig.defaults
-          # Enable Opus dependency
-          mkdir -p components/background_audio
 
       - name: Build firmware
         run: |
-          source $HOME/esp-idf/export.sh
+          . /opt/esp/idf/export.sh > /dev/null 2>&1
           cd scripts/xiaozhi-esp32
           idf.py set-target esp32s3
           idf.py reconfigure
           idf.py build
+          python3 -m esptool --chip esp32s3 merge_bin -o build/merged-flash.bin @build/flash_args
 
-      - name: Upload artifacts
+      - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
           name: xiaozhi-dual-mode-firmware
           path: |
-            scripts/xiaozhi-esp32/build/xiaozhi.bin
             scripts/xiaozhi-esp32/build/bootloader/bootloader.bin
             scripts/xiaozhi-esp32/build/partition_table/partition-table.bin
+            scripts/xiaozhi-esp32/build/xiaozhi.bin
             scripts/xiaozhi-esp32/build/ota_data_initial.bin
             scripts/xiaozhi-esp32/build/merged-flash.bin
           compression-level: 9
