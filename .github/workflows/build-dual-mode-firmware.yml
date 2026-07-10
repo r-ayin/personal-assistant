@@ -23,7 +23,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq git wget flex bison gperf python3 python3-pip \
             python3-venv cmake ninja-build ccache libffi-dev libssl-dev
-          git clone --depth 1 --single-branch --branch v5.5 \
+          git clone --depth 1 --single-branch --branch v5.5.4 \
             https://github.com/espressif/esp-idf.git $HOME/esp-idf
           cd $HOME/esp-idf
           # 标准安装脚本（自动创建 venv + 装 Python 依赖 + 装工具链）
