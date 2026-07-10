@@ -25,22 +25,11 @@ jobs:
             python3-venv cmake ninja-build ccache libffi-dev libssl-dev
           git clone --depth 1 --single-branch --branch v5.5 \
             https://github.com/espressif/esp-idf.git $HOME/esp-idf
-
-      - name: Install ESP32-S3 toolchain & SDK
-        run: |
           cd $HOME/esp-idf
-          # 安装 Python 虚拟环境
-          python3 -m venv $HOME/esp-idf-venv
-          source $HOME/esp-idf-venv/bin/activate
-          pip install --quiet pyyaml cmake
-          # 只安装 esp32s3 工具链（省时间）
-          python3 tools/idf_tools.py install esp32s3
-          # 链接到 export.sh 期望的位置
-          mkdir -p $HOME/.espressif/python_env
-          ln -sfT $HOME/esp-idf-venv $HOME/.espressif/python_env/idf5.5_py3.12_env
-          # 写入环境变量供后续步骤使用
+          # 标准安装脚本（自动创建 venv + 装 Python 依赖 + 装工具链）
+          ./install.sh esp32s3
+          # 写入环境变量
           echo "IDF_PATH=$HOME/esp-idf" >> $GITHUB_ENV
-          echo "IDF_PYTHON_ENV_PATH=$HOME/esp-idf-venv" >> $GITHUB_ENV
 
       - name: Apply dual-mode config
         run: |
