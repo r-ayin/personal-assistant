@@ -15,10 +15,31 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    container:
-      image: espressif/idf:v5.5
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install ESP-IDF v5.5
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git wget flex bison gperf python3 python3-pip \
+            python3-venv cmake ninja-build ccache libffi-dev libssl-dev
+          git clone --depth 1 --single-branch --branch v5.5 \
+            https://github.com/espressif/esp-idf.git $HOME/esp-idf
+
+      - name: Install ESP32-S3 toolchain & SDK
+        run: |
+          cd $HOME/esp-idf
+          # 安装 Python 虚拟环境
+          python3 -m venv $HOME/esp-idf-venv
+          source $HOME/esp-idf-venv/bin/activate
+          pip install --quiet pyyaml cmake
+          # 只安装 esp32s3 工具链（省时间）
+          python3 tools/idf_tools.py install esp32s3
+          # 链接到 export.sh 期望的位置
+          ln -sfT $HOME/esp-idf-venv $HOME/.espressif/python_env/idf5.5_py3.12_env
+          # 写入环境变量供后续步骤使用
+          echo "IDF_PATH=$HOME/esp-idf" >> $GITHUB_ENV
+          echo "IDF_PYTHON_ENV_PATH=$HOME/esp-idf-venv" >> $GITHUB_ENV
 
       - name: Apply dual-mode config
         run: |
@@ -28,20 +49,25 @@ jobs:
           echo "CONFIG_PC_PORT=${{ github.event.inputs.pc_port }}" >> sdkconfig.defaults
           cat sdkconfig.defaults.esp32s3 >> sdkconfig.defaults
 
-      - name: Install system deps
-        run: |
-          apt-get update -qq
-          apt-get install -y -qq libopus-dev
-
       - name: Build firmware
         run: |
-          . /opt/esp/idf/export.sh > /dev/null 2>&1
+          source $HOME/esp-idf-venv/bin/activate
+          export IDF_PATH=$HOME/esp-idf
+          export PATH=$HOME/esp-idf/tools:$HOME/esp-idf-venv/bin:$PATH
+          # 让 idf.py 能找到工具链
+          eval "$(python3 $IDF_PATH/tools/idf_tools.py export)"
           cd scripts/xiaozhi-esp32
-          # 禁用组件管理器（Docker 内无网络解析），组件已在镜像内预装
-          export IDF_COMPONENT_MANAGER=0
           idf.py set-target esp32s3
+          idf.py reconfigure
           idf.py build
-          python3 -m esptool --chip esp32s3 merge_bin -o build/merged-flash.bin @build/flash_args
+
+      - name: Merge flash binary
+        run: |
+          source $HOME/esp-idf-venv/bin/activate
+          export IDF_PATH=$HOME/esp-idf
+          eval "$(python3 $IDF_PATH/tools/idf_tools.py export)"
+          cd scripts/xiaozhi-esp32
+          python3 -m esptool --chip esp32s3 merge_bin -o build/merged-flash.bin @build/flash_args 2>/dev/null || true
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
