@@ -1,0 +1,62 @@
+name: Build Dual-Mode ESP32 Firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      pc_ip:
+        description: 'PC LAN IP address for background audio WS'
+        required: true
+        default: '192.168.1.100'
+      pc_port:
+        description: 'PC WebSocket port'
+        required: false
+        default: '8000'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: 'scripts/xiaozhi-esp32'
+
+      - name: Setup ESP-IDF v5.5
+        uses: espressif/esp-idf-github-action@v1
+        with:
+          esp_idf_version: v5.5
+          target: esp32s3
+
+      - name: Apply dual-mode patches
+        run: |
+          cd scripts/xiaozhi-esp32
+          # Enable background audio in Kconfig
+          echo "CONFIG_BG_AUDIO_ENABLE=y" >> sdkconfig.defaults
+          echo 'CONFIG_PC_IP="${{ github.event.inputs.pc_ip }}"' >> sdkconfig.defaults
+          echo "CONFIG_PC_PORT=${{ github.event.inputs.pc_port }}" >> sdkconfig.defaults
+          # Ensure 16MB flash + PSRAM configs
+          cat sdkconfig.defaults.esp32s3 >> sdkconfig.defaults
+
+      - name: Build firmware
+        run: |
+          cd scripts/xiaozhi-esp32
+          idf.py set-target esp32s3
+          idf.py reconfigure
+          idf.py build
+
+      - name: Generate merged flash binary
+        run: |
+          cd scripts/xiaozhi-esp32
+          python -m esptool --chip esp32s3 merge_bin \
+            -o build/merged-flash.bin @build/flash_args
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaozhi-dual-mode-firmware
+          path: |
+            scripts/xiaozhi-esp32/build/xiaozhi.bin
+            scripts/xiaozhi-esp32/build/bootloader/bootloader.bin
+            scripts/xiaozhi-esp32/build/partition_table/partition-table.bin
+            scripts/xiaozhi-esp32/build/ota_data_initial.bin
+            scripts/xiaozhi-esp32/build/merged-flash.bin
+          compression-level: 9
