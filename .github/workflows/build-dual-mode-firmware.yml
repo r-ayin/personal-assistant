@@ -54,9 +54,6 @@ jobs:
 
       - name: Merge flash binary
         run: |
-          source $HOME/esp-idf-venv/bin/activate
-          export IDF_PATH=$HOME/esp-idf
-          eval "$(python3 $IDF_PATH/tools/idf_tools.py export)"
           cd scripts/xiaozhi-esp32
           python3 -m esptool --chip esp32s3 merge_bin -o build/merged-flash.bin @build/flash_args 2>/dev/null || true
 
