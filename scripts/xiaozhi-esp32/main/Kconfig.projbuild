@@ -1064,31 +1064,6 @@ menu "Camera Configuration"
         endchoice
     endif
 endmenu
-
-menu "Background Audio Collection (Dual-Mode)"
-
-config BG_AUDIO_ENABLE
-    bool "Enable background audio collection"
-    default y
-    help
-        ESP32 在 idle 状态时持续采集人声音频，
-        Opus 编码后推送到 PC 后端的 /ws/audio 端点。
-        对话模式（Listening/Speaking）运行时自动暂停。
-
-config PC_IP
-    string "PC backend IP address"
-    default "192.168.1.100"
-    help
-        跑 personal-assistant 后端的电脑局域网 IP。
-        背景音频 WS 连接使用此地址。
-
-config PC_PORT
-    int "PC backend port"
-    default 8000
-    help
-        后端 API 端口（默认 8000）。
-
-endmenu
     depends on BOARD_TYPE_TAIJI_PI_S3
     choice I2S_TYPE_TAIJIPI_S3
         prompt "taiji-pi-S3 I2S Type"
@@ -1107,5 +1082,29 @@ endmenu
     help
         启动双声道
 endmenu
+
+endmenu
+
+menu "Background Audio Collection (Dual-Mode)"
+
+config BG_AUDIO_ENABLE
+    bool "Enable background audio collection"
+    default y
+    help
+        ESP32 在 idle 状态时持续采集人声音频，
+        通过 WS 推送到 PC 后端的 /ws/audio 端点。
+        对话模式（Listening/Speaking）运行时自动暂停。
+
+config PC_IP
+    string "PC backend IP address"
+    default "192.168.1.100"
+    help
+        跑 personal-assistant 后端的电脑局域网 IP。
+
+config PC_PORT
+    int "PC backend port"
+    default 8000
+    help
+        后端 API 端口（默认 8000）。
 
 endmenu
