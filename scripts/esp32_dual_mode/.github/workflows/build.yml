@@ -1,0 +1,78 @@
+name: Build Dual-Mode Firmware
+
+on:
+  workflow_dispatch:  # 手动触发
+    inputs:
+      pc_ip:
+        description: 'PC IP address'
+        required: false
+        default: '192.168.1.100'
+      pc_port:
+        description: 'PC WebSocket port'
+        required: false
+        default: '8000'
+  push:
+    branches: [main]
+    paths:
+      - 'components/background_audio/**'
+      - 'main/application.h'
+      - 'main/application.cc'
+      - 'main/audio/audio_service.cc'
+      - 'main/Kconfig.projbuild'
+      - 'main/CMakeLists.txt'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: ESP-IDF v5.5 环境
+        uses: espressif/esp-idf-cargo-action@v1
+        with:
+          esp_idf_version: v5.5
+          target: esp32s3
+
+      - name: 设置默认配置（PC IP）
+        run: |
+          echo "CONFIG_BG_AUDIO_ENABLE=y" >> sdkconfig.defaults
+          echo "CONFIG_PC_IP=\"${{ github.event.inputs.pc_ip || '192.168.1.100' }}\"" >> sdkconfig.defaults
+          echo "CONFIG_PC_PORT=${{ github.event.inputs.pc_port || '8000' }}" >> sdkconfig.defaults
+
+      - name: 编译
+        run: |
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: 上传固件
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaozhi-dual-mode-firmware
+          path: |
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+            build/xiaozhi.bin
+            build/ota_data_initial.bin
+            build/flash_args
+          compression-level: 9
+
+      - name: 生成烧录脚本
+        run: |
+          python -c "
+import json
+import subprocess
+result = subprocess.run(['python', '-m', 'esptool', '--chip', 'esp32s3', 'merge_bin',
+    '-o', 'build/merged-flash.bin', '@build/flash_args'], capture_output=True, text=True)
+print(result.stdout)
+print(result.stderr)
+"
+      - name: 上传合并固件
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-flash.bin
+          path: build/merged-flash.bin
+          compression-level: 9
