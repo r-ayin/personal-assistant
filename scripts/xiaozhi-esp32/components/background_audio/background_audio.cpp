@@ -311,16 +311,18 @@ static void _ws_event_handler(void *h, esp_event_base_t b,
             xSemaphoreGive(g_ctx.mutex);
             break;
         case WEBSOCKET_EVENT_DISCONNECTED:
+        {
             ESP_LOGW(TAG, "WS 断开");
             xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
             g_ctx.ws_connected = false;
             g_ctx.reconnect_attempt++;
             int delay = RECONNECT_BASE_MS * (1 << (g_ctx.reconnect_attempt > 5 ? 5
                                                  : g_ctx.reconnect_attempt));
-            g_ctx.reconnect_at = (esp_timer_get_time() / 1000)
-                + (delay > RECONNECT_MAX_MS ? RECONNECT_MAX_MS : delay);
+            if (delay > RECONNECT_MAX_MS) delay = RECONNECT_MAX_MS;
+            g_ctx.reconnect_at = (esp_timer_get_time() / 1000) + delay;
             xSemaphoreGive(g_ctx.mutex);
             break;
+        }
         default:
             break;
     }
@@ -333,7 +335,6 @@ static esp_err_t _connect_ws(void) {
         .uri = g_ctx.ws_uri,
         .task_stack = 4096,
         .buffer_size = 4096,
-        .reconnect = false,
     };
     g_ctx.ws_client = esp_websocket_client_init(&cfg);
     if (!g_ctx.ws_client) return ESP_FAIL;
