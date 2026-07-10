@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       pc_ip:
-        description: 'PC LAN IP address for background audio WS'
+        description: 'PC LAN IP for background audio WS'
         required: true
         default: '192.168.1.100'
       pc_port:
@@ -17,39 +17,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          sparse-checkout: 'scripts/xiaozhi-esp32'
 
-      - name: Setup ESP-IDF v5.5
-        uses: espressif/esp-idf-github-action@v1
-        with:
-          esp_idf_version: v5.5
-          target: esp32s3
+      - name: Install ESP-IDF v5.5
+        run: |
+          # Install dependencies
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git wget flex bison gperf python3 python3-pip \
+            cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+          # Clone ESP-IDF (shallow)
+          git clone --depth 1 --single-branch --branch v5.5 \
+            https://github.com/espressif/esp-idf.git $HOME/esp-idf
+          # Install toolchain
+          python3 $HOME/esp-idf/tools/idf_tools.py install cmake 2>/dev/null || true
+          python3 $HOME/esp-idf/tools/idf_tools.py install-python-env
+          source $HOME/esp-idf/export.sh
 
-      - name: Apply dual-mode patches
+      - name: Configure dual-mode
         run: |
           cd scripts/xiaozhi-esp32
-          # Enable background audio in Kconfig
           echo "CONFIG_BG_AUDIO_ENABLE=y" >> sdkconfig.defaults
           echo 'CONFIG_PC_IP="${{ github.event.inputs.pc_ip }}"' >> sdkconfig.defaults
           echo "CONFIG_PC_PORT=${{ github.event.inputs.pc_port }}" >> sdkconfig.defaults
-          # Ensure 16MB flash + PSRAM configs
           cat sdkconfig.defaults.esp32s3 >> sdkconfig.defaults
+          # Enable Opus dependency
+          mkdir -p components/background_audio
 
       - name: Build firmware
         run: |
+          source $HOME/esp-idf/export.sh
           cd scripts/xiaozhi-esp32
           idf.py set-target esp32s3
           idf.py reconfigure
           idf.py build
 
-      - name: Generate merged flash binary
-        run: |
-          cd scripts/xiaozhi-esp32
-          python -m esptool --chip esp32s3 merge_bin \
-            -o build/merged-flash.bin @build/flash_args
-
-      - name: Upload firmware artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: xiaozhi-dual-mode-firmware
@@ -60,3 +61,4 @@ jobs:
             scripts/xiaozhi-esp32/build/ota_data_initial.bin
             scripts/xiaozhi-esp32/build/merged-flash.bin
           compression-level: 9
+          retention-days: 7
