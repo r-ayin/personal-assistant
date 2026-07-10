@@ -52,11 +52,12 @@ jobs:
 
       - name: Build firmware
         run: |
-          source $HOME/esp-idf-venv/bin/activate
           export IDF_PATH=$HOME/esp-idf
-          export PATH=$HOME/esp-idf/tools:$HOME/esp-idf-venv/bin:$PATH
-          # 让 idf.py 能找到工具链
-          eval "$(python3 $IDF_PATH/tools/idf_tools.py export)"
+          export IDF_TOOLS_PATH=$HOME/.espressif
+          # 激活 ESP-IDF 环境（忽略工具缺失警告）
+          set +e
+          source $IDF_PATH/export.sh 2>&1 || true
+          set -e
           cd scripts/xiaozhi-esp32
           idf.py set-target esp32s3
           idf.py reconfigure
