@@ -36,6 +36,7 @@ jobs:
           # 只安装 esp32s3 工具链（省时间）
           python3 tools/idf_tools.py install esp32s3
           # 链接到 export.sh 期望的位置
+          mkdir -p $HOME/.espressif/python_env
           ln -sfT $HOME/esp-idf-venv $HOME/.espressif/python_env/idf5.5_py3.12_env
           # 写入环境变量供后续步骤使用
           echo "IDF_PATH=$HOME/esp-idf" >> $GITHUB_ENV
