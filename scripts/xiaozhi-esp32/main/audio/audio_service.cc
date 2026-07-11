@@ -236,7 +236,7 @@ void AudioService::AudioInputTask() {
     while (true) {
         EventBits_t bits = xEventGroupWaitBits(event_group_, AS_EVENT_AUDIO_TESTING_RUNNING |
             AS_EVENT_WAKE_WORD_RUNNING | AS_EVENT_AUDIO_PROCESSOR_RUNNING,
-            pdFALSE, pdFALSE, portMAX_DELAY);
+            pdFALSE, pdFALSE, pdMS_TO_TICKS(50));  // 50ms poll for bg audio
 
         if (service_stopped_) {
             break;
@@ -284,6 +284,16 @@ void AudioService::AudioInputTask() {
                 if (bits & AS_EVENT_AUDIO_PROCESSOR_RUNNING) {
                     audio_processor_->Feed(std::move(data));
                 }
+                continue;
+            }
+        }
+
+        /* Background audio: read PCM in idle state */
+        if (!(bits & (AS_EVENT_AUDIO_TESTING_RUNNING | AS_EVENT_WAKE_WORD_RUNNING | AS_EVENT_AUDIO_PROCESSOR_RUNNING))) {
+            int samples = 480;
+            std::vector<int16_t> data;
+            if (ReadAudioData(data, 16000, samples)) {
+                bg_feed_pcm(data.data(), data.size());
                 continue;
             }
         }
