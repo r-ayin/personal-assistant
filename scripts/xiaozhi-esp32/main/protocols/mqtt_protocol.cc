@@ -384,6 +384,11 @@ std::string MqttProtocol::DecodeHexString(const std::string& hex_string) {
     return decoded;
 }
 
+bool MqttProtocol::HasValidConfig() const {
+    Settings settings("mqtt", false);
+    return !settings.GetString("endpoint").empty();
+}
+
 bool MqttProtocol::IsAudioChannelOpened() const {
     return udp_ != nullptr && !error_occurred_ && !IsTimeout();
 }
