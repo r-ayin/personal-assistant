@@ -170,7 +170,7 @@ void Application::Initialize() {
     if (pc_ip && strlen(pc_ip) > 0) {
         snprintf(bg_pc_ip_, sizeof(bg_pc_ip_), "%s", pc_ip);
         bg_port_ = pc_port;
-        const char *token = ""; // Token could be loaded from NVS/Kconfig if needed
+        const char *token = CONFIG_PC_TOKEN;
         if (bg_init(pc_ip, pc_port, token) == 0) {
             bg_inited_ = true;
             ESP_LOGI(TAG, "Background audio collection initialized -> %s:%d", pc_ip, pc_port);
