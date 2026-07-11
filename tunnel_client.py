@@ -25,9 +25,45 @@ import json
 import logging
 import os
 import signal
+import ssl
 import sys
 import time
 from urllib.parse import urlencode
+
+# 自签证书 SSL context（不验证服务端证书）
+_SSL_CTX = ssl.create_default_context()
+_SSL_CTX.check_hostname = False
+_SSL_CTX.verify_mode = ssl.CERT_NONE
+
+# ── 自动从 .env 文件加载环境变量 ─────────────────────────────────
+_dotenv_loaded = False
+def _load_dotenv():
+    global _dotenv_loaded
+    if _dotenv_loaded:
+        return
+    _dotenv_loaded = True
+    env_paths = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env.local'),
+    ]
+    for env_path in env_paths:
+        if os.path.exists(env_path):
+            try:
+                with open(env_path, encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith('#'):
+                            continue
+                        if '=' not in line:
+                            continue
+                        key, _, val = line.partition('=')
+                        key = key.strip()
+                        val = val.strip().strip('"').strip("'")
+                        if key not in os.environ:
+                            os.environ[key] = val
+                logging.getLogger('tunnel').info('从 %s 加载环境变量', env_path)
+            except Exception:
+                pass
 
 try:
     import websockets
@@ -36,8 +72,10 @@ except ImportError:
     raise
 
 # ── 配置 ─────────────────────────────────────────────────────────
+_load_dotenv()
+
 ECS_HOST = os.environ.get("PA_ECS_HOST", "115.29.199.130")
-ECS_PORT = os.environ.get("PA_ECS_PORT", "443")
+ECS_PORT = os.environ.get("PA_ECS_PORT", "18801")
 TOKEN = os.environ.get("PA_RELAY_TOKEN", "") or os.environ.get("PA_API_TOKEN", "")
 LOCAL_WS = os.environ.get("PA_LOCAL_WS", "ws://localhost:8000/ws/live")
 RECONNECT_BASE = 1.0  # 秒
@@ -129,9 +167,9 @@ async def _connect_local() -> websockets.WebSocketClientProtocol:
 
 
 async def _connect_ecs() -> websockets.WebSocketClientProtocol:
-    """连 ECS 中继。"""
+    """连 ECS 中继（直连端口 18801，无需 SSL）。"""
     params = urlencode({"token": TOKEN})
-    uri = f"wss://{ECS_HOST}:{ECS_PORT}/ws/tunnel?{params}"
+    uri = f"ws://{ECS_HOST}:{ECS_PORT}/ws/tunnel?{params}"
     log.info("正在连接 ECS 中继: %s", uri.replace(TOKEN, "***"))
     ws = await websockets.connect(
         uri,
@@ -139,8 +177,6 @@ async def _connect_ecs() -> websockets.WebSocketClientProtocol:
         ping_interval=PING_INTERVAL,
         ping_timeout=10,
         open_timeout=15,
-        # wss 需要 ssl，但是自签证书时可能需 verify=False
-        # 正式用 ECS 证书时不需要这个
     )
     log.info("ECS 中继已连接")
     return ws
