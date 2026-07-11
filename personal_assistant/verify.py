@@ -117,9 +117,17 @@ def run_all() -> dict:
     ek, ed = correct_events()
     rk, rd = correct_reminders()
     mk, md = verify_memories()
+    kept = ek + rk + mk
+    deleted = ed + rd + md
+    items = []
+    for _ in range(kept):
+        items.append({"kind": "pass", "target": "", "expected": "落地", "actual": "命中", "status": "passed"})
+    for _ in range(deleted):
+        items.append({"kind": "fail", "target": "", "expected": "落地", "actual": "删除", "status": "failed"})
     rep = {"events_kept": ek, "events_deleted": ed,
            "reminders_kept": rk, "reminders_deleted": rd,
-           "memories_kept": mk, "memories_deleted": md}
+           "memories_kept": mk, "memories_deleted": md,
+           "items": items}
     print(f"[verify] {rep}")
     return rep
 

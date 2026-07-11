@@ -147,14 +147,46 @@ def count_memories() -> int:
         return row["n"] if row else 0
 
 
-def get_segments(limit: int = 50, offset: int = 0) -> list[dict]:
+def get_segments(limit: int = 50, offset: int = 0, agent_id: str = "") -> list[dict]:
     with connect() as c:
+        if agent_id:
+            return [dict(r) for r in c.execute("SELECT * FROM segments WHERE agent_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?", (agent_id, limit, offset))]
         return [dict(r) for r in c.execute("SELECT * FROM segments ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))]
 
 
-def get_memories(limit: int = 50, offset: int = 0) -> list[dict]:
+def get_memories(limit: int = 50, offset: int = 0, agent_id: str = "") -> list[dict]:
     with connect() as c:
+        if agent_id:
+            return [dict(r) for r in c.execute("SELECT m.* FROM memories m JOIN segments s ON m.segment_id=s.id WHERE s.agent_id=? ORDER BY m.created_at DESC LIMIT ? OFFSET ?", (agent_id, limit, offset))]
         return [dict(r) for r in c.execute("SELECT * FROM memories ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))]
+
+
+def search_memories_by_text(q: str, limit: int = 20) -> list[dict]:
+    with connect() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM memories WHERE content LIKE ? ORDER BY created_at DESC LIMIT ?", (f"%{q}%", limit))]
+
+
+def clear_chat_log() -> int:
+    with connect() as c:
+        n = c.execute("SELECT COUNT(*) AS n FROM chat_log").fetchone()["n"]
+        c.execute("DELETE FROM chat_log")
+        c.commit()
+    return n
+
+
+# ── 干预 ──────────────────────────────────────────────────────
+def add_intervention(data: dict) -> str:
+    rid = f"int-{abs(hash(data.get('message','')[:40]))%10**12}"
+    with connect() as c:
+        c.execute("INSERT OR IGNORE INTO interventions(id,created_at,trigger_kind,evidence,message,delivered) VALUES(?,?,?,?,?,0)",
+                  (rid, now_iso(), data.get("trigger_kind", "unknown"), data.get("evidence", ""), data.get("message", "")))
+        c.commit()
+    return rid
+
+
+def get_interventions(limit: int = 20) -> list[dict]:
+    with connect() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM interventions ORDER BY created_at DESC LIMIT ?", (limit,))]
 
 
 # ── 人格档案版本 ──────────────────────────────────────────────

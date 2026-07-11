@@ -3,6 +3,7 @@ function InboxPage(){
   const m = window.MockData;
   const [selected,setSelected] = useState(null);
   const [filter,setFilter] = useState("all");
+  const [agentFilter,setAgentFilter] = useState("all");
   const [scanning,setScanning] = useState(false);
 
   const doIngest = async ()=>{
@@ -55,16 +56,22 @@ function InboxPage(){
         }
       />
 
-      {/* Speaker legend */}
+      {/* Speaker + Agent legend */}
       <div className="glass p-4 mb-4 flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2 text-[12px]">
+        <div className="flex items-center gap-2 text-[12px] flex-wrap">
           <span className="text-[var(--text-mute)] mr-1">说话人 ·</span>
           {m.speakers.map(s=>(
             <span key={s.name} className={"chip "+(s.name==="A"?"chip-indigo":"")}>
               <i className="fas fa-user-tag" style={{fontSize:9}}></i> {s.name} · {s.label}
             </span>
           ))}
-          <span className="ml-2 text-[var(--text-mute)] text-[11px]">来自 TextDiarizer（heuristic）</span>
+          <span className="ml-2 text-[var(--text-mute)] mr-1">设备 ·</span>
+          <select className="chip text-[11px]" value={agentFilter} onChange={e=>setAgentFilter(e.target.value)}>
+            <option value="all">全部设备</option>
+            {(m.agents||[]).map(a=>(
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
         </div>
         <div className="flex items-center gap-1 text-[12px]">
           {[{k:"all",t:"全部"},{k:"A",t:"仅我"},{k:"B",t:"仅他人"}].map(f=>(
