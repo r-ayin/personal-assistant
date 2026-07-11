@@ -59,11 +59,19 @@ def verify_http(request: Request):
 
 
 def verify_ws_token(websocket) -> bool:
-    """WebSocket 现阶段校验 ?token= 查询参数。返回 False 时可调用 close(code=1008)。"""
+    """WebSocket 校验 ?token= 查询参数。返回 False 时可调用 close(code=1008)。
+    /ws/audio（背景音频）走局域网直连，免 token 校验。"""
     token = _configured_token()
     if not token:
         return True
-    # WebSocket 可能没有 query_params（未 accept 前），尝试从 url 解析
+    # /ws/audio 是 LAN-only 背景音频流，免鉴权
+    try:
+        url = getattr(websocket, "url", None)
+        path = str(url) if url else (websocket.scope.get("path", "") if hasattr(websocket, "scope") else "")
+        if "/ws/audio" in path:
+            return True
+    except Exception:
+        pass
     try:
         qp = websocket.query_params
         return _check(qp.get("token", ""), token)
