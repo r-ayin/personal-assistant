@@ -71,7 +71,7 @@ function CalendarPage(){
               const isToday = isTodayMonth && d===today.getDate();
               const hasEv = eventDays.includes(d);
               return (
-                <div key={i} className={"aspect-square rounded-md flex flex-col items-center justify-center text-[12px] relative "+(isToday?"bg-[var(--indigo)] text-white font-semibold":"text-[var(--text-dim)] hover:bg-[var(--bg-elev-2)] cursor-pointer")}>
+                <div key={i} onClick={()=>{const ds=d<10?"0"+d:""+d; const ms=(month+1)<10?"0"+(month+1):""+(month+1); setQ(year+"-"+ms+"-"+ds);}} className={"aspect-square rounded-md flex flex-col items-center justify-center text-[12px] relative "+(isToday?"bg-[var(--indigo)] text-white font-semibold":"text-[var(--text-dim)] hover:bg-[var(--bg-elev-2)] cursor-pointer")}>
                   <span>{d}</span>
                   {hasEv && !isToday && <span className="w-1 h-1 rounded-full bg-[var(--gold)] mt-0.5"></span>}
                   {hasEv && isToday && <span className="w-1 h-1 rounded-full bg-white mt-0.5"></span>}

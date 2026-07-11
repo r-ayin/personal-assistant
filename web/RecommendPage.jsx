@@ -4,17 +4,18 @@ function RecommendPage(){
   const [kind,setKind] = useState("book");
   const [q,setQ] = useState("");
 
-  // 切 kind 时按需拉真推荐（含可选 query）；失败保留 bootstrap/mock 数据
+  // 切 kind 或 q 变化时拉取推荐（q 带 400ms debounce）
   useEffect(()=>{
-    (async ()=>{
+    const t = setTimeout(async ()=>{
       const j = await window.PA.get("/recommend", { kind, ...(q?{q}:{}) });
       if(j && j.recommendations){
         const next = Object.assign({}, m.recommendations);
         next[kind] = j.recommendations.map(r=>({item:r.item, reason:r.reason, based_on: r.based_on?[r.based_on]:[], from_search: kind!=="action"}));
         window.PA.updateMock("recommendations", next);
       }
-    })();
-  },[kind]);
+    }, 400);
+    return ()=>clearTimeout(t);
+  },[kind, q]);
 
   const kinds = [
     { k:"book",   t:"图书", icon:"fa-book" },

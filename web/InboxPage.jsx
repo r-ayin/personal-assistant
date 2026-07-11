@@ -27,6 +27,15 @@ function InboxPage(){
     if(hl){ setSelected(hl); sessionStorage.removeItem("hl_seg"); }
   },[]);
 
+  // 设备筛选 → 重新加载数据
+  useEffect(()=>{
+    (async ()=>{
+      if(agentFilter==="all") return;
+      const j = await window.PA.get("/segments", { agent_id: agentFilter });
+      if(j && j.segments) window.PA.updateMock("segments", j.segments);
+    })();
+  },[agentFilter]);
+
   const segments = useMemo(()=>{
     if(filter==="all") return m.segments;
     return m.segments.filter(s=>s.speaker===filter);
@@ -140,7 +149,7 @@ function InboxPage(){
                     </div>
                   </div>
                 )} />
-                <Block icon="fa-bell" title="派生提醒" items={relatedReminders(sel.id)} render={r=>(
+                <InboxBlock icon="fa-bell" title="派生提醒" items={relatedReminders(sel.id)} render={r=>(
                   <div key={r.id} className="p-3 rounded-lg bg-[var(--bg-elev-2)] border border-[var(--border-soft)]">
                     <div className="text-[13px] text-[var(--text)]">{r.what}</div>
                     <div className="mt-1.5 flex items-center gap-2 flex-wrap">
