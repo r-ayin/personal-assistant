@@ -342,7 +342,11 @@ def scan_interventions():
 
 @app.get("/profile")
 def get_profile():
-    return distill.load_persona() or {"error": "no profile"}
+    try:
+        p = distill.current_profile()
+        return p or {"error": "no profile"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.post("/distill")
@@ -376,53 +380,64 @@ def run_ingest():
 
 @app.get("/events")
 def list_events(day: str = ""):
-    if day:
-        return {"events": calendar.get_events(day)}
-    return {"events": calendar.get_events()}
+    try:
+        rows = storage.all_events()
+        if day:
+            rows = [r for r in rows if r.get("when_dt", "").startswith(day)]
+        return {"events": rows}
+    except Exception as e:
+        return {"events": [], "error": str(e)}
 
 
 @app.get("/reminders")
 def list_reminders():
-    return {"reminders": reminders.list_all()}
+    return {"reminders": storage.reminders_all()}
 
 
 @app.get("/speakers")
 def list_speakers():
-    return {"speakers": storage.get_speakers()}
+    return {"speakers": storage.speakers_all()}
 
 
 @app.get("/chat-log")
 def chat_log(limit: int = 50):
-    return {"chat_log": storage.get_chat_log(limit)}
+    return {"chat_log": storage.chat_logs(limit)}
 
 
-@app.get("/verify")
+@app.post("/verify")
 def run_verify():
     from . import verify
     return verify.run_all()
 
 
-@app.post("/recommend")
-def do_recommend():
+@app.get("/recommend")
+def do_recommend(kind: str = "", q: str = ""):
     from . import recommend
-    return recommend.run()
+    items = recommend.recommend(kind=kind or "book", query=q or "")
+    return {"recommendations": items}
 
 
 @app.get("/wiki")
-def search_wiki(q: str = ""):
+def search_wiki(q: str = "", tag: str = ""):
     from . import wiki
-    return wiki.search(q) if q else {"topics": wiki.list_topics()}
+    pages = wiki.retrieve(tag=tag, query=q) if (tag or q) else wiki.retrieve()
+    return {"pages": pages, "topics": []}
 
 
 @app.get("/status")
 def full_status():
+    try:
+        pf_ver = None
+        _p, _s, pf_ver = storage.latest_persona()
+    except Exception:
+        pf_ver = 0
     return {
         "segments": storage.count_segments(),
         "memories": storage.count_memories(),
-        "events": len(calendar.get_events()),
-        "reminders": len(reminders.list_all()),
-        "speakers": len(storage.get_speakers()),
-        "profile_version": distill.current_version(),
+        "events": len(storage.all_events()),
+        "reminders": len(storage.reminders_all()),
+        "speakers": len(storage.speakers_all()),
+        "profile_version": pf_ver or 0,
     }
 
 
@@ -440,13 +455,13 @@ class LLMSettingsIn(BaseModel):
 @app.get("/settings/llm")
 def llm_settings_get():
     from . import llm
-    return llm.effective_llm_config(mask_key=True)
+    return llm.effective_llm_config()
 
 
 @app.post("/settings/llm")
 def llm_settings_update(body: LLMSettingsIn):
     if body.backend:
-        if body.backend not in ("stub", "anthropic_proxy", "ollama",
+        if body.backend not in ("stub", "deepseek", "anthropic_proxy", "ollama",
                                 "openai_compat", "glm_anthropic"):
             raise HTTPException(400, f"unknown backend: {body.backend}")
         config.set_override("llm.backend", body.backend)

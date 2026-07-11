@@ -154,11 +154,21 @@ def get_segments(limit: int = 50, offset: int = 0, agent_id: str = "") -> list[d
         return [dict(r) for r in c.execute("SELECT * FROM segments ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))]
 
 
+def _clean_mem(rows: list[dict]) -> list[dict]:
+    """从 memories 行中去除 embedding BLOB（不可 JSON 序列化）。"""
+    out = []
+    for r in rows:
+        d = dict(r)
+        d.pop("embedding", None)
+        out.append(d)
+    return out
+
+
 def get_memories(limit: int = 50, offset: int = 0, agent_id: str = "") -> list[dict]:
     with connect() as c:
         if agent_id:
-            return [dict(r) for r in c.execute("SELECT m.* FROM memories m JOIN segments s ON m.segment_id=s.id WHERE s.agent_id=? ORDER BY m.created_at DESC LIMIT ? OFFSET ?", (agent_id, limit, offset))]
-        return [dict(r) for r in c.execute("SELECT * FROM memories ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))]
+            return _clean_mem([dict(r) for r in c.execute("SELECT m.id,m.segment_id,m.kind,m.content,m.evidence,m.created_at,m.processed FROM memories m JOIN segments s ON m.segment_id=s.id WHERE s.agent_id=? ORDER BY m.created_at DESC LIMIT ? OFFSET ?", (agent_id, limit, offset))])
+        return _clean_mem([dict(r) for r in c.execute("SELECT id,segment_id,kind,content,evidence,created_at,processed FROM memories ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))])
 
 
 def search_memories_by_text(q: str, limit: int = 20) -> list[dict]:

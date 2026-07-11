@@ -51,6 +51,7 @@ function DashboardPage({ onNavigate }){
             </div>
             <button className={"btn btn-ghost text-[12px] "+(scanning?"opacity-70":"")} onClick={doScan} disabled={scanning}>
               <i className={"fas "+(scanning?"fa-spinner fa-spin":"fa-bolt")}></i> {scanning?"扫描中…":"立即扫描触发器"}
+            </button>
           </div>
 
           <div className="space-y-3">
