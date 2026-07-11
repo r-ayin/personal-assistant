@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS segments(
   text TEXT, speaker TEXT, language TEXT,
   created_at TEXT,  -- 记录时间(系统收文/ingest 时刻)，非真实发生时间(无设备时间戳则不可得)
   processed INT DEFAULT 0,
-  time_kind TEXT DEFAULT 'received');  -- 'received'=记录时间 | 'occurred'=真实发生时间(设备时间戳/强制对齐提供)
+  time_kind TEXT DEFAULT 'received',
+  agent_id TEXT DEFAULT '');  -- 来源 agent/设备 ID
 CREATE TABLE IF NOT EXISTS ingested_files(
   source_file TEXT PRIMARY KEY, ingested_at TEXT, n_segments INT);
 CREATE TABLE IF NOT EXISTS memories(
@@ -45,7 +46,10 @@ CREATE TABLE IF NOT EXISTS chat_log(
 CREATE TABLE IF NOT EXISTS wiki_pages(
   id TEXT PRIMARY KEY, title TEXT, body TEXT, tags TEXT,
   source_ids TEXT, link_ids TEXT, created_at TEXT);
-"""
+CREATE TABLE IF NOT EXISTS agents(
+  id TEXT PRIMARY KEY, name TEXT, device_uuid TEXT UNIQUE,
+  personality TEXT DEFAULT '{}', voice TEXT DEFAULT 'default',
+  enabled INT DEFAULT 1, created_at TEXT);"""
 
 
 def connect(db_path: Path | None = None):
@@ -128,6 +132,29 @@ def search_memories(query_vec: np.ndarray, k: int = 5):
     sims = (mat @ q) / norms[:, 0]
     order = np.argsort(sims)[::-1][:k]
     return [{"memory": rows[i], "score": float(sims[i])} for i in order]
+
+
+# ── 计数与列表（供 API 端点和 health）──────────────────────────
+def count_segments() -> int:
+    with connect() as c:
+        row = c.execute("SELECT COUNT(*) AS n FROM segments").fetchone()
+        return row["n"] if row else 0
+
+
+def count_memories() -> int:
+    with connect() as c:
+        row = c.execute("SELECT COUNT(*) AS n FROM memories").fetchone()
+        return row["n"] if row else 0
+
+
+def get_segments(limit: int = 50, offset: int = 0) -> list[dict]:
+    with connect() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM segments ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))]
+
+
+def get_memories(limit: int = 50, offset: int = 0) -> list[dict]:
+    with connect() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM memories ORDER BY created_at DESC LIMIT ? OFFSET ?", (limit, offset))]
 
 
 # ── 人格档案版本 ──────────────────────────────────────────────
@@ -349,3 +376,53 @@ def mark_wikified(ids) -> None:
     import json as _j
     cur = wikified_ids() | set(ids)
     kv_set("wikified_mem_ids", _j.dumps(list(cur), ensure_ascii=False))
+
+
+# ── 多 Agent 管理 ──────────────────────────────────────────────
+def register_agent(device_uuid: str, name: str = "") -> dict:
+    """注册或更新一个 agent（按 device_uuid 识别，idempotent）。"""
+    a_id = f"agent-{device_uuid[:8]}"
+    now = now_iso()
+    with connect() as c:
+        existing = c.execute("SELECT * FROM agents WHERE device_uuid=? OR id=?", (device_uuid, a_id)).fetchone()
+        if existing:
+            c.execute("UPDATE agents SET name=?, device_uuid=? WHERE id=?",
+                      (name or existing["name"], device_uuid, existing["id"]))
+        else:
+            c.execute("INSERT INTO agents(id,name,device_uuid,personality,voice,enabled,created_at) "
+                      "VALUES(?,?,?,'{}','default',1,?)", (a_id, name or device_uuid[:8], device_uuid, now))
+        c.commit()
+        row = c.execute("SELECT * FROM agents WHERE id=?", (a_id,)).fetchone()
+    return dict(row)
+
+
+def get_agent(agent_id: str) -> dict | None:
+    with connect() as c:
+        row = c.execute("SELECT * FROM agents WHERE id=?", (agent_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_agent_by_device(device_uuid: str) -> dict | None:
+    with connect() as c:
+        row = c.execute("SELECT * FROM agents WHERE device_uuid=?", (device_uuid,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_agents() -> list[dict]:
+    with connect() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM agents ORDER BY created_at")]
+
+
+def update_agent(agent_id: str, updates: dict) -> dict | None:
+    """更新 agent 的 name / personality / voice / enabled。"""
+    allowed = {"name", "personality", "voice", "enabled"}
+    fields = {k: v for k, v in updates.items() if k in allowed}
+    if not fields:
+        return get_agent(agent_id)
+    sets = ", ".join(f"{k}=?" for k in fields)
+    vals = list(fields.values())
+    with connect() as c:
+        c.execute(f"UPDATE agents SET {sets} WHERE id=?", (*vals, agent_id))
+        c.commit()
+        row = c.execute("SELECT * FROM agents WHERE id=?", (agent_id,)).fetchone()
+    return dict(row) if row else None

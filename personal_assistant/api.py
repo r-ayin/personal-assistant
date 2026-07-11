@@ -124,11 +124,12 @@ async def _handle_live_message(ws: WebSocket, raw: str) -> None:
         await ws_manager.manager.send_to(ws, "pong", {})
 
 
-async def _save_bg_segment(pcm: bytes, inbox_dir: Path, session_id: str) -> str | None:
+async def _save_bg_segment(pcm: bytes, inbox_dir: Path, session_id: str, agent_id: str = "") -> str | None:
     """保存 PCM 段为 WAV 到 inbox，供 scan_inbox 处理。"""
     import wave, io
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    name = f"bg-{session_id}-{ts}.wav"
+    agent_tag = f"-agent={agent_id}" if agent_id else ""
+    name = f"bg-{session_id}-{ts}{agent_tag}.wav"
     wav_io = io.BytesIO()
     with wave.open(wav_io, "wb") as wf:
         wf.setnchannels(1)
@@ -152,11 +153,14 @@ async def ws_audio(ws: WebSocket):
       Byte 0 = 类型: 0=opus_frame, 1=segment_end, 2=ping
       Bytes 1+ = Opus 载荷
 
-    流程：Opus 解码 → RMS VAD 切段 → WAV 到 inbox → scan_inbox。"""
+    流程：Opus 解码 → RMS VAD 切段 → WAV 到 inbox → scan_inbox。
+    可选 query 参数: agent_id 标记来源设备。"""
     if not auth.verify_ws_token(ws):
         await ws.close(code=1008)
         return
     await ws.accept()
+    # 解析 agent_id（来自 /ws/audio?agent_id=xxx）
+    ws_agent_id = ws.query_params.get("agent_id", "")
 
     # VAD 切段器（内联精简版，零依赖）
     class _Vad:
@@ -233,12 +237,12 @@ async def ws_audio(ws: WebSocket):
                 # PCM 16kHz 16bit mono, raw data starts after type byte
                 pcm = raw[1:]
                 for seg in segmenter.feed(pcm):
-                    await _save_bg_segment(seg, inbox_dir, session_id)
+                    await _save_bg_segment(seg, inbox_dir, session_id, ws_agent_id)
                     wav_count += 1
 
             elif frame_type == 1:  # 段结束
                 for seg in segmenter.flush():
-                    await _save_bg_segment(seg, inbox_dir, session_id)
+                    await _save_bg_segment(seg, inbox_dir, session_id, ws_agent_id)
                     wav_count += 1
 
             elif frame_type == 2:  # Ping
@@ -253,7 +257,7 @@ async def ws_audio(ws: WebSocket):
         log.warning("ws_audio error: %s", e)
     finally:
         for seg in segmenter.flush():
-            await _save_bg_segment(seg, inbox_dir, session_id)
+            await _save_bg_segment(seg, inbox_dir, session_id, ws_agent_id)
             wav_count += 1
         if wav_count > 0:
             log.info("ws_audio %s total %d segments, triggering ingest", session_id, wav_count)
@@ -426,3 +430,43 @@ async def inbox_upload(request: Request, filename: str = Query(...)):
     dest.write_bytes(content)
     return {"saved": str(dest.relative_to(config.ROOT)), "bytes": len(content),
             "ingest_hint": "POST /ingest to scan"}
+
+
+# ── 多 Agent 管理 ─────────────────────────────────────────────
+class AgentIn(BaseModel):
+    device_uuid: str
+    name: str = ""
+
+
+class AgentUpdate(BaseModel):
+    name: str | None = None
+    personality: str | None = None
+    voice: str | None = None
+    enabled: bool | None = None
+
+
+@app.get("/agents")
+def list_agents():
+    return {"agents": storage.list_agents()}
+
+
+@app.post("/agents")
+def register_agent(body: AgentIn):
+    return storage.register_agent(body.device_uuid, body.name)
+
+
+@app.get("/agents/{agent_id}")
+def get_agent(agent_id: str):
+    a = storage.get_agent(agent_id)
+    if not a:
+        raise HTTPException(404, f"agent {agent_id} not found")
+    return a
+
+
+@app.put("/agents/{agent_id}")
+def update_agent(agent_id: str, body: AgentUpdate):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    a = storage.update_agent(agent_id, updates)
+    if not a:
+        raise HTTPException(404, f"agent {agent_id} not found")
+    return a

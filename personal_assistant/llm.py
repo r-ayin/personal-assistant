@@ -508,6 +508,11 @@ def get_llm() -> LLMClient:
         return OpenAICompatLLM(f["base_url"], f["api_key"], f["model"],
                                f["max_tokens"], f["thinking_effort"],
                                f["thinking_format"] or "glm")
+    if backend == "deepseek":
+        # DeepSeek is OpenAI-compatible, use same client with mapped config
+        return OpenAICompatLLM(f["base_url"], f["api_key"], f["model"],
+                               f["max_tokens"], f["thinking_effort"],
+                               f["thinking_format"] or "glm")
     raise ValueError(f"unknown llm backend: {backend}")
 
 

@@ -36,6 +36,14 @@
       "thinking_effort": "off",
       "thinking_format": "anthropic"
     },
+    "deepseek": {
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key": "${DEEPSEEK_API_KEY}",
+      "model": "deepseek-v4-flash",
+      "max_tokens": 4096,
+      "thinking_effort": "off",
+      "thinking_format": "glm"
+    },
     "stub": {}
   },
   "embedder": {

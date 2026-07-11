@@ -281,15 +281,6 @@ async def main():
         process_request=_process_request,  # 握手前 403 拒坏 token
     ):
         await asyncio.Future()
-            max_size=MAX_FRAME_SIZE,
-            ping_interval=PING_INTERVAL,
-            ping_timeout=PING_TIMEOUT,
-            open_timeout=OPEN_TIMEOUT,
-            close_timeout=CLOSE_TIMEOUT,
-            compression=None,
-            process_request=_process_request,
-        ):
-            await asyncio.Future()
 
 
 if __name__ == "__main__":

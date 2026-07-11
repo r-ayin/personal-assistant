@@ -114,6 +114,28 @@ class ReminderScheduler:
         self._stop = True
 
 
+# ── 模块级快捷方式 ────────────────────────────────────────────
+_SCHEDULER: ReminderScheduler | None = None
+
+
+def check_due() -> list[dict]:
+    """模块级快捷调用（供 api.py import），返回已触发提醒列表。"""
+    global _SCHEDULER
+    if _SCHEDULER is None:
+        _SCHEDULER = ReminderScheduler()
+    now = datetime.now().isoformat(timespec="minutes")
+    due = storage.reminders_due(now)
+    fired = []
+    for r in due:
+        _SCHEDULER.notifier.notify(f"⏰ 提醒：{r['what']}（{r.get('when_raw','')}）", r["id"])
+        if r.get("recurring"):
+            nxt = _next_occurrence(r.get("when_raw", ""), datetime.now(), r["recurring"])
+            storage.add_reminder({**r, "when_dt": nxt, "id": r["id"] + "-next"})
+        storage.mark_reminder_fired(r["id"])
+        fired.append(r)
+    return fired
+
+
 class _Notify:
     def notify(self, message, evidence):
         line = f"[{storage.now_iso()}] {message}  ← {evidence}"
