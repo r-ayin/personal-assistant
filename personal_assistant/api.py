@@ -278,8 +278,15 @@ async def ws_xiaozhi(ws: WebSocket):
 
 @app.get("/health")
 def health():
+    from . import llm
+    cfg = llm.effective_llm_config()
     return {"status": "ok", "segments": storage.count_segments(),
-            "memories": storage.count_memories()}
+            "memories": storage.count_memories(),
+            "llm": f"{cfg.get('backend','?')} · {cfg.get('model','?')}",
+            "asr": "faster_whisper",
+            "embedder": "hashing",
+            "speaker": "TextDiarizer",
+            "db": f"SQLite {storage.db_size_mb()} MB"}
 
 
 @app.get("/segments")
@@ -426,6 +433,13 @@ def search_wiki(q: str = "", tag: str = ""):
     from . import wiki
     pages = wiki.retrieve(tag=tag, query=q) if (tag or q) else wiki.retrieve()
     return {"pages": pages, "topics": []}
+
+
+@app.post("/wiki/build")
+def build_wiki():
+    from . import wiki
+    result = wiki.build()
+    return {"ok": True, "pages_created": result.get("pages_created", 0) if isinstance(result, dict) else 0}
 
 
 @app.get("/status")
