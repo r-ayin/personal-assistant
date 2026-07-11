@@ -1,22 +1,23 @@
+function _arr(v) {
+  return Array.isArray(v) ? v : (v||"").split(",").filter(Boolean).map(x=>x.trim());
+}
+
 function WikiPage(){
   const { useState, useMemo } = React;
   const m = window.MockData;
   const [tag,setTag] = useState("all");
   const [q,setQ] = useState("");
-  const [activeId,setActiveId] = useState(m.wikiPages[0].id);
+  const [activeId,setActiveId] = useState(m.wikiPages[0]?.id);
   const [building,setBuilding] = useState(false);
 
   const allTags = useMemo(()=>{
     const s = new Set();
-    m.wikiPages.forEach(p=> {
-      const tags = Array.isArray(p.tags) ? p.tags : (p.tags||"").split(",").map(t=>t.trim());
-      tags.forEach(t=> t && s.add(t));
-    });
+    m.wikiPages.forEach(p=> { _arr(p.tags).forEach(t=> t && s.add(t)); });
     return ["all", ...Array.from(s)];
   },[]);
 
   const filtered = m.wikiPages.filter(p=>{
-    const ptags = Array.isArray(p.tags) ? p.tags : (p.tags||"").split(",").map(x=>x.trim());
+    const ptags = _arr(p.tags);
     if(tag!=="all" && !ptags.includes(tag)) return false;
     if(q && !(p.title.includes(q) || p.body.includes(q))) return false;
     return true;
@@ -81,7 +82,7 @@ function WikiPage(){
               </div>
 
               <div className="mt-4 flex flex-wrap gap-1.5">
-                {(Array.isArray(active.tags) ? active.tags : (active.tags||"").split(",").filter(Boolean)).map(t =><window.Tag key={t} color="blue">#{t.trim()}</window.Tag>)}
+                {_arr(active.tags).map(t =><window.Tag key={t} color="blue">#{t.trim()}</window.Tag>)}
               </div>
 
               <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -90,18 +91,18 @@ function WikiPage(){
                 </div>
                 <div className="space-y-4">
                   <div className="p-3 rounded-lg bg-[var(--bg-elev-2)] border border-[var(--border-soft)]">
-                    <div className="text-[10.5px] uppercase tracking-widest text-[var(--text-mute)] mb-2">落地源记忆 · {active.source_ids.split(",").filter(Boolean).length}</div>
+                    <div className="text-[10.5px] uppercase tracking-widest text-[var(--text-mute)] mb-2">落地源记忆 · {_arr(active.source_ids).length}</div>
                     <div className="flex flex-wrap gap-1.5">
-                      {active.source_ids.split(",").filter(Boolean).map(id=>(
+                      {_arr(active.source_ids).map(id=>(
                         <window.SourceChip key={id} type="memory" id={id.trim()} label={id.trim()}/>
                       ))}
                     </div>
                   </div>
                   <div className="p-3 rounded-lg bg-[var(--bg-elev-2)] border border-[var(--border-soft)]">
                     <div className="text-[10.5px] uppercase tracking-widest text-[var(--text-mute)] mb-2">页内互链</div>
-                    {active.link_ids ? (
+                    {active.link_ids && _arr(active.link_ids).length ? (
                       <div className="flex flex-wrap gap-1.5">
-                        {active.link_ids.split(",").filter(Boolean).map(id=>{
+                        {_arr(active.link_ids).map(id=>{
                           const target = m.wikiPages.find(p=>p.id===id.trim());
                           return (
                             <button key={id} onClick={()=>setActiveId(id.trim())} className="chip chip-green hover:brightness-125">

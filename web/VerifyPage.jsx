@@ -7,7 +7,7 @@ function VerifyPage(){
   const statusFilter = (s) => filter==="all" ? true : s===filter;
   const items = r.items.filter(x=>statusFilter(x.status));
 
-  const pct = r.total ? Math.round(r.passed/r.total*100) : 0;
+  const pct = r.total > 0 ? Math.round(r.passed/r.total*100) : 0;
 
   return (
     <div className="p-8 max-w-[1320px] mx-auto">

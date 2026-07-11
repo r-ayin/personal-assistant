@@ -37,7 +37,7 @@ function DashboardPage({ onNavigate }){
         <window.Stat icon="fa-waveform-lines" label="今日新转录段落" value={m.segments.length} accent="indigo" trend="+12%" hint="received" />
         <window.Stat icon="fa-brain"           label="本周记忆增量"   value={m.memories.length} accent="green" trend="+3" hint="evidence 落地 6/7" />
         <window.Stat icon="fa-bell"            label="待触发提醒"    value={m.reminders.filter(r=>!r.fired).length} accent="gold" trend="next 09:00" hint="确定性 when_dt" />
-        <window.Stat icon="fa-shield-check"    label="反幻觉通过率"  value={Math.round(m.verifyReport.passed/m.verifyReport.total*100)+"%"} accent={m.verifyReport.failed>0?"red":"green"} trend={m.verifyReport.failed+" failed"} hint="run_all 23 项" />
+        <window.Stat icon="fa-shield-check"    label="反幻觉通过率"  value={m.verifyReport.total>0 ? Math.round(m.verifyReport.passed/m.verifyReport.total*100)+"%" : "—"} accent={m.verifyReport.failed>0?"red":"green"} trend={m.verifyReport.failed+" failed"} hint="run_all" />
       </div>
 
       {/* main two-col */}
