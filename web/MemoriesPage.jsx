@@ -60,7 +60,7 @@ function MemoriesPage(){
         <window.Empty icon="fa-magnifying-glass-minus" title="没找到匹配的记忆" hint="试试改关键词或清空筛选。"/>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {list.map(mem=><window.MemoryCard key={mem.id} mem={mem} />)}
+          {list.map(mem=><window.MemoryCard key={mem.id} mem={mem} onJumpSegment={() => { if(mem.segment_id) window.dispatchEvent(new CustomEvent("source-jump", {detail:{type:"segment", id: mem.segment_id}})); }} />)}
         </div>
       )}
     </div>

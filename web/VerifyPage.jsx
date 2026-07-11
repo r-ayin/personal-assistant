@@ -83,7 +83,7 @@ function VerifyPage(){
                     </div>
                   )}
                 </div>
-                <button className="text-[var(--indigo)] text-[12px] hover:underline shrink-0 mt-0.5">
+                <button className="text-[var(--indigo)] text-[12px] hover:underline shrink-0 mt-0.5" onClick={() => window.dispatchEvent(new CustomEvent("source-jump", {detail:{type:"segment", id: it.target}}))}>
                   跳源核查 →
                 </button>
               </div>

@@ -204,7 +204,7 @@ function SettingsPage(){
             <div className="mt-5 flex items-center justify-between">
               <div className="text-[11px] text-[var(--text-mute)]">改动会同步给 <span className="mono">cli llm</span>，确保「前端改 = CLI 看 = 生效」。</div>
               <div className="flex items-center gap-2">
-                <button className="btn btn-ghost">重置</button>
+                <button className="btn btn-ghost" onClick={()=>{setBackend("deepseek");setModel("deepseek-v4-flash");setBaseUrl("https://api.deepseek.com/v1");setCtxWin(200000);setMaxTok(8192);setEffort("off");setApiKey("");}}>重置</button>
                 <button className={"btn btn-primary "+(saving?"opacity-70":"")} onClick={save} disabled={saving}>
                   <i className={"fas "+(saving?"fa-spinner fa-spin":(saved?"fa-circle-check":"fa-floppy-disk"))}></i>
                   {saving?"保存中…":(saved?"已保存":"保存配置")}

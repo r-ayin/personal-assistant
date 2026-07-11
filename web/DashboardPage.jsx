@@ -76,7 +76,6 @@ function DashboardPage({ onNavigate }){
                       </div>
                       <div className="flex items-center gap-2">
                         <window.TimeChip created_at={it.created_at} time_kind="received" compact />
-                        <button className="text-[12px] text-[var(--indigo)] opacity-0 group-hover:opacity-100 transition">采纳 →</button>
                       </div>
                     </div>
                   </div>

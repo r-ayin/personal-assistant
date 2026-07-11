@@ -85,7 +85,7 @@
       ["memories", "/memories", j => j && j.memories ? j.memories : null],
       ["events", "/events", j => j && j.events ? j.events : null],
       ["reminders", "/reminders", j => j && j.reminders ? j.reminders : null],
-      ["chatLog", "/chat-log", j => j && j.logs ? j.logs : null],
+      ["chatLog", "/chat-log", j => j && j.chat_log ? j.chat_log : null],
       ["speakers", "/speakers", j => j && j.speakers ? j.speakers : null],
       ["wikiPages", "/wiki", j => j && j.pages ? j.pages : null],
       ["agents", "/agents", j => j && j.agents ? j.agents : null],

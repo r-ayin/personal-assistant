@@ -74,7 +74,8 @@ function ChatPage(){
       <div className="border-t border-[var(--border-soft)] bg-[var(--bg-elev)] px-8 py-4">
         <div className="max-w-[1100px] mx-auto">
           <div className="flex items-end gap-3">
-            <button className="btn btn-ghost h-9 w-9 p-0 justify-center"><i className="fas fa-paperclip"></i></button>
+            <input type="file" accept=".txt,.srt" className="hidden" id="chat-upload" onChange={async(e)=>{const f=e.target.files&&e.target.files[0];if(!f)return;await fetch((window.PA_BASE||"")+"/inbox/upload?filename="+encodeURIComponent(f.name),{method:"POST",body:await f.text()});e.target.value="";}} />
+            <button className="btn btn-ghost h-9 w-9 p-0 justify-center" onClick={()=>document.getElementById("chat-upload").click()}><i className="fas fa-paperclip"></i></button>
             <div className="flex-1 relative">
               <textarea
                 rows={1}
