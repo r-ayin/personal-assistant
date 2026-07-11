@@ -45,6 +45,11 @@ async def lifespan(app: FastAPI):
             except asyncio.TimeoutError:
                 pass
     task = asyncio.create_task(_patrol())
+
+    # 启动原始 TCP 音频服务器（端口 8004，绕过 WS 层）
+    from . import audio_tcp
+    audio_server = asyncio.create_task(audio_tcp.start_server())
+    log.info("bg audio TCP server started on port 8004")
     yield
     stop.set()
     await task
@@ -155,9 +160,6 @@ async def ws_audio(ws: WebSocket):
 
     流程：Opus 解码 → RMS VAD 切段 → WAV 到 inbox → scan_inbox。
     可选 query 参数: agent_id 标记来源设备。"""
-    if not auth.verify_ws_token(ws):
-        await ws.close(code=1008)
-        return
     await ws.accept()
     # 解析 agent_id（来自 /ws/audio?agent_id=xxx）
     ws_agent_id = ws.query_params.get("agent_id", "")

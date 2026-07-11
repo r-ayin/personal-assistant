@@ -1,2 +1,2 @@
 dependencies:
-  espressif/esp_websocket_client: "*"
+  idf: ">=5.0"

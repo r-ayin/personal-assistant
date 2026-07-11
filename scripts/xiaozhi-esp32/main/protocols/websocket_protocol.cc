@@ -71,6 +71,11 @@ bool WebsocketProtocol::SendText(const std::string& text) {
     return true;
 }
 
+bool WebsocketProtocol::HasValidConfig() const {
+    Settings settings("websocket", false);
+    return !settings.GetString("url").empty();
+}
+
 bool WebsocketProtocol::IsAudioChannelOpened() const {
     return websocket_ != nullptr && websocket_->IsConnected() && !error_occurred_ && !IsTimeout();
 }

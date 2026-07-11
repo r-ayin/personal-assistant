@@ -3,20 +3,26 @@
   "displayName": "全自动个人助手",
   "currentStage": "development",
   "locked": false,
-  "lockedReason": "用户直导式构建（2026-06-28）+ 后台自治循环在跑(qwen3.7-max, 2026-06-29 12:20 重启); 安卓App设计已 triage 入管线(.pipeline/current.json kind=complex stage=prd)",
-  "version": "0.5.0",
-  "mvpStatus": "v0.1 深核 + v0.2 说话人/日历/提醒/反幻觉/真实时间 + v0.3 推荐联网搜索 + v0.4 个人wiki + v0.5 LLM 可配(5旋钮+思考程度档位+全局覆盖+cli llm+3新端点) 均端到端跑通（stub + 真 GLM-5.2 会话代理）",
-  "v04Feature": "个人wiki:记忆→自动切片+LLM分类打标+编译互链主题页(title/body/tags/source_ids/links);反幻觉(source_ids真实+body落地源);按标签/词检索",
-  "v05Feature": "LLM 可配: model/context_window/max_tokens/thinking_effort(off·低·中·高)/base_url/api_key;全局覆盖层(config.set_override+env+llm.*默认);思考程度→provider原生字段(GLM开/关·GLM-anthropic budget·OpenAI reasoning_effort+max_completion_tokens·Qwen enable_thinking+thinking_budget·Anthropic thinking.budget_tokens);新增 glm_anthropic 后端;cli llm;GET/POST /settings/llm + POST /inbox/upload;前端设计文档 planning/frontend-design.md",
-  "v06Design": "安卓App设计方案完成 planning/android-app-design.md(8章:架构/设计系统/逐屏11屏/前台录音隐私/导航数据层/端点映射总表/风险/落地路径);对齐后端v0.5 21端点+反幻觉可见+诚实配置;已triage为complex/stage=prd,待dev阶段实现",
+  "version": "0.6.0",
+  "mvpStatus": "v0.1 深核 + v0.2 说话人/日历/提醒/反幻觉/真实时间 + v0.3 推荐联网 + v0.4 wiki + v0.5 LLM可配 + v0.6 双模式固件(ESP32背景音频+'江江'唤醒+Web面板全量接后端)",
+  "v06Feature": "ESP32双模式固件(xiaozhi-esp32+bg_audio TCP 8004+NAT保活)、'江江'唤醒词(后端ASR→DeepSeek本地对话)、Web面板全量修复(Agent管理+deepseek+缓存破坏+空安全)、Multi-Agent架构(agents表+CRUD+统一记忆库)、CI自动构建流水线(AutoCIFlash每15分钟)、DeepSeek v4 Flash统一后端",
+  "lastUpdated": "2026-07-12",
   "decisions": {
-    "llm": "pluggable: local Ollama default + cloud GLM-5.2 (dev 会话代理可用); 5旋钮可配+思考程度档位(按官方文档映射4家provider)",
-    "hardware": "user has GPU box (dev box has none)",
-    "audio": "设备自带转录(无时间戳);inbox watch-dir;时间戳=收文记录时间(time_kind=received)",
-    "web": "Bing(默认,免key) + 可切 ApiWebSearcher(用户配搜索API,tavily/generic)",
-    "mvp": "core deep + 说话人/日历/提醒/反幻觉/推荐/wiki/LLM可配 (achieved)"
+    "llm": "DeepSeek v4 Flash (统一后端，所有agent共享)",
+    "hardware": "ESP32-S3-N16R8 + PC GPU box",
+    "audio": "ESP32 I2S INMP441 → TCP 8004 → PC后端 → VAD → ASR → 唤醒检测",
+    "wake_word": "'江江'由后端FasterWhisper ASR检测，不走xiaozhi云",
+    "web": "React Babel JSX + Tailwind, 后端FastAPI同源托管",
+    "transport": "TCP raw代替WebSocket(解决esp_websocket_client兼容性)"
   },
-  "deferred": ["Web panel 实现(设计文档已完成 planning/frontend-design.md)", "pyannote real voiceprint", "faster-whisper real model", "persona LoRA"],
-  "activeWork": ["Android app: 设计稿完成(planning/android-app-design.md), 管线 stage=prd, 待 dev 阶段实现 Kotlin+Compose 工程"],
-  "lastUpdated": "2026-06-29"
+  "deferred": [
+    "Android APK (需SDK环境)",
+    "ECS外网隧道打通",
+    "pyannote真声纹(GPU盒)",
+    "ESP32本地唤醒词替换(当前在PC后端ASR侧)"
+  ],
+  "activeWork": [
+    "第3轮端到端测试(人对ESP32说话→ASR→唤醒→对话)",
+    "Web面板继续完善(Verify明细/Persona版本切换)"
+  ]
 }

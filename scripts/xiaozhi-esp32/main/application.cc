@@ -758,11 +758,11 @@ void Application::HandleStartListeningEvent() {
         return;
     }
 
-    if (!protocol_) {
-        ESP_LOGE(TAG, "Protocol not initialized");
+    if (!protocol_ || !protocol_->HasValidConfig()) {
+        ESP_LOGW(TAG, "Protocol not initialized or no valid config");
         return;
     }
-    
+
     if (state == kDeviceStateIdle) {
         if (!protocol_->IsAudioChannelOpened()) {
             SetDeviceState(kDeviceStateConnecting);
@@ -795,7 +795,8 @@ void Application::HandleStopListeningEvent() {
 }
 
 void Application::HandleWakeWordDetectedEvent() {
-    if (!protocol_) {
+    if (!protocol_ || !protocol_->HasValidConfig()) {
+        ESP_LOGI(TAG, "No valid protocol config, wake word ignored (bg_audio-only mode)");
         return;
     }
 
@@ -887,10 +888,11 @@ void Application::HandleStateChangedEvent() {
         case kDeviceStateUnknown:
         case kDeviceStateIdle:
             display->SetStatus(Lang::Strings::STANDBY);
-            display->ClearChatMessages();  // Clear messages first
-            display->SetEmotion("neutral"); // Then set emotion (wechat mode checks child count)
+            display->ClearChatMessages();
+            display->SetEmotion("neutral");
             audio_service_.EnableVoiceProcessing(false);
-            audio_service_.EnableWakeWordDetection(true);
+            // Only enable local wake word if we have a valid server to connect to
+            audio_service_.EnableWakeWordDetection(protocol_ && protocol_->HasValidConfig());
             // Resume background audio collection when idle
             if (bg_inited_) {
                 StartBackgroundAudio();

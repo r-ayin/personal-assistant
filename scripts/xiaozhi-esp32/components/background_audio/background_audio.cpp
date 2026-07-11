@@ -1,11 +1,9 @@
 /*
- * background_audio.cpp — 背景音频收集实现（PCM 直推版）
+ * background_audio.cpp — 背景音频收集实现（原始 TCP 版）
  *
- * 不依赖 Opus 编译——直接发送 16kHz/16bit PCM 帧到 PC 后端。
- * PC 端 /ws/audio 做 RMS VAD 切段 → WAV → inbox → scan_inbox。
- *
- * 工作流：
- *   bg_feed_pcm() → 累积 PCM → 每 30ms 帧 WS 发送 → 静音超时发段结束标记
+ * 通过原始 TCP socket 发送 16kHz/16bit PCM 帧到 PC 后端的 8004 端口。
+ * 协议：1B type + 4B length LE + N bytes PCM data
+ *   type=0 PCM | type=1 segment_end | type=2 ping
  */
 #include "background_audio.h"
 
@@ -17,34 +15,35 @@
 #include <esp_log.h>
 #include <esp_system.h>
 #include <esp_heap_caps.h>
-#include <esp_websocket_client.h>
 #include <esp_timer.h>
+#include <lwip/sockets.h>
+#include <lwip/netdb.h>
 
 #define TAG "bg_audio"
 
-/* ── 帧类型（与 PC 端 /ws/audio 约定）─── */
-#define FRAME_PCM      0   /* PCM 音频数据 */
-#define FRAME_SEGMENT  1   /* 段结束标记 */
-#define FRAME_PING     2   /* 心跳 */
+#define FRAME_PCM      0
+#define FRAME_SEGMENT  1
+#define FRAME_PING     2
 
 #define PING_INTERVAL_MS     30000
 #define RECONNECT_BASE_MS    1000
 #define RECONNECT_MAX_MS     30000
 
-#define PCM_FRAME_SAMPLES   480    /* 30ms @ 16kHz */
-#define VAD_CHUNK_SAMPLES   512    /* 32ms */
+#define PCM_FRAME_SAMPLES   480
+#define VAD_CHUNK_SAMPLES   512
 #define ONSET_CHUNKS        2
-#define PCM_BUFFER_SECONDS  8      /* 8 秒环形缓冲 */
+#define PCM_BUFFER_SECONDS  8
 
 typedef struct {
-    char ws_uri[160];
+    char host[64];
+    int port;
     int sample_rate;
     int vad_threshold;
     int silence_timeout_ms;
     int min_segment_ms;
 
-    esp_websocket_client_handle_t ws_client;
-    bool ws_connected;
+    int sock;
+    bool connected;
 
     /* VAD 状态机 */
     bool is_speaking;
@@ -63,37 +62,28 @@ typedef struct {
     int64_t last_ping_ms;
 
     SemaphoreHandle_t mutex;
-    TaskHandle_t ws_task_handle;
+    TaskHandle_t mgmt_task_handle;
 } bg_ctx_t;
 
 static bg_ctx_t g_ctx;
 
 static void _append_pcm(const int16_t *data, size_t samples);
 static void _flush_segment(void);
-static void _send_pcm(const int16_t *data, size_t samples);
-static void _send_control(uint8_t type);
-static esp_err_t _connect_ws(void);
-static void _disconnect_ws(void);
-static void _ws_task(void *pv);
-
-/* ── 公开 API ──────────────────────────────────────────────── */
+static void _tcp_send(uint8_t type, const uint8_t *payload, size_t len);
+static int _tcp_connect(void);
+static void _tcp_disconnect(void);
+static void _mgmt_task(void *pv);
 
 int bg_init(const char *pc_ip, int pc_port, const char *token) {
     memset(&g_ctx, 0, sizeof(g_ctx));
-
+    strncpy(g_ctx.host, pc_ip, sizeof(g_ctx.host) - 1);
+    g_ctx.port = pc_port;
     g_ctx.sample_rate = 16000;
     g_ctx.vad_threshold = 350;
     g_ctx.silence_timeout_ms = 500;
     g_ctx.min_segment_ms = 300;
     g_ctx.state = BG_STATE_STOPPED;
-
-    if (token && strlen(token) > 0) {
-        snprintf(g_ctx.ws_uri, sizeof(g_ctx.ws_uri),
-                 "ws://%s:%d/ws/audio?token=%s", pc_ip, pc_port, token);
-    } else {
-        snprintf(g_ctx.ws_uri, sizeof(g_ctx.ws_uri),
-                 "ws://%s:%d/ws/audio", pc_ip, pc_port);
-    }
+    g_ctx.sock = -1;
 
     g_ctx.mutex = xSemaphoreCreateMutex();
     if (!g_ctx.mutex) {
@@ -119,19 +109,17 @@ int bg_init(const char *pc_ip, int pc_port, const char *token) {
     }
     g_ctx.pcm_buffer_count = 0;
 
-    ESP_LOGI(TAG, "初始化完成: %s 阈值=%d", g_ctx.ws_uri, g_ctx.vad_threshold);
+    ESP_LOGI(TAG, "初始化: %s:%d 阈值=%d", g_ctx.host, g_ctx.port, g_ctx.vad_threshold);
     return 0;
 }
 
 int bg_start(void) {
     if (!g_ctx.mutex) return -1;
     xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
-
     if (g_ctx.state != BG_STATE_STOPPED) {
         xSemaphoreGive(g_ctx.mutex);
         return 0;
     }
-
     g_ctx.is_speaking = false;
     g_ctx.silence_chunks = 0;
     g_ctx.onset_chunks = 0;
@@ -140,18 +128,15 @@ int bg_start(void) {
     g_ctx.reconnect_attempt = 0;
     g_ctx.last_ping_ms = 0;
     g_ctx.state = BG_STATE_IDLE;
-
     xSemaphoreGive(g_ctx.mutex);
 
-    esp_err_t err = _connect_ws();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "WS 连接失败");
+    if (_tcp_connect() != 0) {
+        ESP_LOGE(TAG, "TCP 连接失败");
         xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
         g_ctx.state = BG_STATE_STOPPED;
         xSemaphoreGive(g_ctx.mutex);
         return -1;
     }
-
     ESP_LOGI(TAG, "背景收集已启动");
     return 0;
 }
@@ -159,17 +144,14 @@ int bg_start(void) {
 int bg_stop(void) {
     if (!g_ctx.mutex) return -1;
     xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
-
     if (g_ctx.state == BG_STATE_STOPPED) {
         xSemaphoreGive(g_ctx.mutex);
         return 0;
     }
-
     _flush_segment();
     g_ctx.state = BG_STATE_STOPPED;
-
     xSemaphoreGive(g_ctx.mutex);
-    _disconnect_ws();
+    _tcp_disconnect();
     ESP_LOGI(TAG, "背景收集已停止");
     return 0;
 }
@@ -177,13 +159,11 @@ int bg_stop(void) {
 int bg_feed_pcm(const int16_t *pcm, size_t samples) {
     if (!pcm || samples == 0 || !g_ctx.mutex) return -1;
     xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
-
     if (g_ctx.state == BG_STATE_STOPPED) {
         xSemaphoreGive(g_ctx.mutex);
         return 0;
     }
 
-    /* 分块做 RMS VAD */
     size_t offset = 0;
     while (offset < samples) {
         size_t chunk = (samples - offset < (size_t)VAD_CHUNK_SAMPLES)
@@ -232,7 +212,6 @@ int bg_feed_pcm(const int16_t *pcm, size_t samples) {
         }
         offset += chunk;
     }
-
     xSemaphoreGive(g_ctx.mutex);
     return 0;
 }
@@ -259,7 +238,7 @@ bg_state_t bg_get_state(void) {
     return s;
 }
 
-/* ── 内部函数 ──────────────────────────────────────────────── */
+/* ── PCM 缓冲 ──────────────────────────────────────────────── */
 
 static void _append_pcm(const int16_t *data, size_t samples) {
     if (g_ctx.pcm_buffer_count + samples > g_ctx.pcm_buffer_capacity) {
@@ -282,139 +261,137 @@ static void _flush_segment(void) {
         return;
     }
 
-    /* 逐帧发送 PCM（每帧 30ms，与 PC 端约定） */
     size_t offset = 0;
     while (offset + PCM_FRAME_SAMPLES <= g_ctx.pcm_buffer_count) {
-        _send_pcm(g_ctx.pcm_buffer + offset, PCM_FRAME_SAMPLES);
+        _tcp_send(FRAME_PCM, (uint8_t*)(g_ctx.pcm_buffer + offset), PCM_FRAME_SAMPLES * 2);
         offset += PCM_FRAME_SAMPLES;
     }
-    /* 剩余不足一帧的零头也发掉 */
     if (offset < g_ctx.pcm_buffer_count) {
-        _send_pcm(g_ctx.pcm_buffer + offset, g_ctx.pcm_buffer_count - offset);
+        _tcp_send(FRAME_PCM, (uint8_t*)(g_ctx.pcm_buffer + offset),
+                  (g_ctx.pcm_buffer_count - offset) * 2);
     }
-
-    _send_control(FRAME_SEGMENT);
+    _tcp_send(FRAME_SEGMENT, NULL, 0);
     ESP_LOGI(TAG, "背景段已发送: %dms", ms);
     g_ctx.pcm_buffer_count = 0;
 }
 
-/* ── WS 连接管理 ───────────────────────────────────────────── */
+/* ── TCP 连接管理 ───────────────────────────────────────────── */
 
-static void _ws_event_handler(void *h, esp_event_base_t b,
-                              int32_t id, void *d) {
-    switch (id) {
-        case WEBSOCKET_EVENT_CONNECTED:
-            ESP_LOGI(TAG, "WS 已连接");
-            xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
-            g_ctx.ws_connected = true;
-            g_ctx.reconnect_attempt = 0;
-            xSemaphoreGive(g_ctx.mutex);
-            break;
-        case WEBSOCKET_EVENT_DISCONNECTED:
-        {
-            ESP_LOGW(TAG, "WS 断开");
-            xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
-            g_ctx.ws_connected = false;
-            g_ctx.reconnect_attempt++;
-            int delay = RECONNECT_BASE_MS * (1 << (g_ctx.reconnect_attempt > 5 ? 5
-                                                 : g_ctx.reconnect_attempt));
-            if (delay > RECONNECT_MAX_MS) delay = RECONNECT_MAX_MS;
-            g_ctx.reconnect_at = (esp_timer_get_time() / 1000) + delay;
-            xSemaphoreGive(g_ctx.mutex);
-            break;
-        }
-        default:
-            break;
+static int _tcp_connect(void) {
+    _tcp_disconnect();
+
+    struct addrinfo hints = {0}, *res;
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    char port_str[8];
+    snprintf(port_str, sizeof(port_str), "%d", g_ctx.port);
+
+    if (getaddrinfo(g_ctx.host, port_str, &hints, &res) != 0 || !res) {
+        ESP_LOGE(TAG, "DNS 解析失败: %s", g_ctx.host);
+        return -1;
     }
+
+    int sock = socket(res->ai_family, res->ai_socktype, 0);
+    if (sock < 0) {
+        freeaddrinfo(res);
+        return -1;
+    }
+
+    struct timeval timeout = {.tv_sec = 5, .tv_usec = 0};
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+
+    if (connect(sock, res->ai_addr, res->ai_addrlen) != 0) {
+        close(sock);
+        freeaddrinfo(res);
+        ESP_LOGE(TAG, "TCP 连接失败: %s:%d", g_ctx.host, g_ctx.port);
+        return -1;
+    }
+    freeaddrinfo(res);
+
+    g_ctx.sock = sock;
+    g_ctx.connected = true;
+    g_ctx.reconnect_attempt = 0;
+
+    if (g_ctx.mgmt_task_handle == NULL) {
+        xTaskCreate(_mgmt_task, "bg_tcp_mgmt", 2048, NULL, 2, &g_ctx.mgmt_task_handle);
+    }
+
+    ESP_LOGI(TAG, "TCP 已连接: %s:%d", g_ctx.host, g_ctx.port);
+    return 0;
 }
 
-static esp_err_t _connect_ws(void) {
-    if (g_ctx.ws_client) _disconnect_ws();
-
-    esp_websocket_client_config_t cfg = {
-        .uri = g_ctx.ws_uri,
-        .task_stack = 4096,
-        .buffer_size = 4096,
-    };
-    g_ctx.ws_client = esp_websocket_client_init(&cfg);
-    if (!g_ctx.ws_client) return ESP_FAIL;
-
-    esp_websocket_register_events(g_ctx.ws_client, WEBSOCKET_EVENT_ANY,
-                                  _ws_event_handler, NULL);
-
-    esp_err_t err = esp_websocket_client_start(g_ctx.ws_client);
-    if (err != ESP_OK) {
-        esp_websocket_client_destroy(g_ctx.ws_client);
-        g_ctx.ws_client = NULL;
-    }
-
-    if (err == ESP_OK && g_ctx.ws_task_handle == NULL) {
-        xTaskCreate(_ws_task, "bg_ws", 4096, NULL, 2, &g_ctx.ws_task_handle);
-    }
-    return err;
-}
-
-static void _disconnect_ws(void) {
-    if (g_ctx.ws_task_handle) {
-        TaskHandle_t h = g_ctx.ws_task_handle;
-        g_ctx.ws_task_handle = NULL;
+static void _tcp_disconnect(void) {
+    if (g_ctx.mgmt_task_handle) {
+        TaskHandle_t h = g_ctx.mgmt_task_handle;
+        g_ctx.mgmt_task_handle = NULL;
         vTaskDelete(h);
     }
-    if (g_ctx.ws_client) {
-        esp_websocket_client_stop(g_ctx.ws_client);
-        esp_websocket_client_destroy(g_ctx.ws_client);
-        g_ctx.ws_client = NULL;
+    if (g_ctx.sock >= 0) {
+        close(g_ctx.sock);
+        g_ctx.sock = -1;
     }
-    g_ctx.ws_connected = false;
+    g_ctx.connected = false;
 }
 
-static void _ws_task(void *pv) {
-    while (g_ctx.ws_task_handle) {
+static void _tcp_send(uint8_t type, const uint8_t *payload, size_t len) {
+    if (!g_ctx.connected || g_ctx.sock < 0) return;
+
+    uint8_t header[5];
+    header[0] = type;
+    header[1] = len & 0xFF;
+    header[2] = (len >> 8) & 0xFF;
+    header[3] = (len >> 16) & 0xFF;
+    header[4] = (len >> 24) & 0xFF;
+
+    if (send(g_ctx.sock, header, 5, 0) < 0) {
+        ESP_LOGW(TAG, "TCP 发送失败（header）");
+        _tcp_disconnect();
+        return;
+    }
+    if (len > 0 && payload) {
+        if (send(g_ctx.sock, payload, len, 0) < 0) {
+            ESP_LOGW(TAG, "TCP 发送失败（payload）");
+            _tcp_disconnect();
+        }
+    }
+}
+
+static void _mgmt_task(void *pv) {
+    int idle_pcm_count = 0;
+    while (g_ctx.mgmt_task_handle) {
         vTaskDelay(pdMS_TO_TICKS(1000));
 
         xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
         int64_t now = esp_timer_get_time() / 1000;
 
         /* 心跳 */
-        if (g_ctx.ws_connected && now - g_ctx.last_ping_ms > PING_INTERVAL_MS) {
+        if (g_ctx.connected && now - g_ctx.last_ping_ms > PING_INTERVAL_MS) {
             g_ctx.last_ping_ms = now;
-            _send_control(FRAME_PING);
+            _tcp_send(FRAME_PING, NULL, 0);
+        }
+
+        /* NAT 保活：空闲时每 5 秒发一段静音 PCM，防止路由器超时断开 TCP */
+        if (g_ctx.connected && !g_ctx.is_speaking) {
+            idle_pcm_count++;
+            if (idle_pcm_count >= 5) {  // 5 秒
+                idle_pcm_count = 0;
+                int16_t silence[PCM_FRAME_SAMPLES] = {0};
+                _tcp_send(FRAME_PCM, (uint8_t*)silence, PCM_FRAME_SAMPLES * 2);
+            }
+        } else {
+            idle_pcm_count = 0;
         }
 
         /* 重连 */
-        if (!g_ctx.ws_connected && g_ctx.state != BG_STATE_STOPPED
+        if (!g_ctx.connected && g_ctx.state != BG_STATE_STOPPED
             && g_ctx.reconnect_at > 0 && now >= g_ctx.reconnect_at) {
             ESP_LOGI(TAG, "尝试重连...");
-            _connect_ws();
+            _tcp_connect();
             g_ctx.reconnect_at = 0;
         }
 
         xSemaphoreGive(g_ctx.mutex);
     }
     vTaskDelete(NULL);
-}
-
-/* ── 帧发送 ──────────────────────────────────────────────────── */
-
-static void _send_pcm(const int16_t *data, size_t samples) {
-    if (!g_ctx.ws_connected || !g_ctx.ws_client || samples == 0) return;
-
-    /* 帧格式: type(1B) + pcm_data(2B * samples) */
-    size_t total = 1 + samples * sizeof(int16_t);
-    uint8_t *frame = (uint8_t *)malloc(total);
-    if (!frame) return;
-
-    frame[0] = FRAME_PCM;
-    memcpy(frame + 1, data, samples * sizeof(int16_t));
-
-    esp_websocket_client_send_bin(g_ctx.ws_client, (char *)frame, total,
-                                  pdMS_TO_TICKS(100));
-    free(frame);
-}
-
-static void _send_control(uint8_t type) {
-    if (!g_ctx.ws_connected || !g_ctx.ws_client) return;
-    uint8_t ctrl[1] = { type };
-    esp_websocket_client_send_bin(g_ctx.ws_client, (char *)ctrl, 1,
-                                  pdMS_TO_TICKS(500));
 }
