@@ -361,9 +361,13 @@ class ChatIn(BaseModel):
 
 @app.post("/chat")
 def chat_endpoint(body: ChatIn):
-    reply, evidence = chat.Assistant().respond(body.message)
+    reply = chat.Assistant().respond(body.message)
+    evidence = []
     storage.add_chat_log("user", body.message)
-    storage.add_chat_log("assistant", reply, evidence=evidence)
+    try:
+        storage.add_chat_log("assistant", reply)
+    except Exception:
+        pass
     return {"reply": reply, "evidence": evidence}
 
 
