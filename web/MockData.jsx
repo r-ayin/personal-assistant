@@ -113,16 +113,20 @@ const MockData = (() => {
 
   const health = {
     api: "running",
-    llm: "openai_compat · GLM-4.6",
-    asr: "whisper-large-v3 (device)",
-    embedder: "bge-m3-zh",
+    llm: "deepseek · deepseek-v4-flash",
+    asr: "faster_whisper",
+    embedder: "hashing",
     speaker: "TextDiarizer (heuristic)",
     inbox: 3,
-    db: "SQLite 142 MB",
-    latency_ms: 184,
+    db: "SQLite 108 KB",
+    latency_ms: 1,
   };
 
-  return { segments, memories, events, reminders, chatLog, speakers, persona, interventions, recommendations, wikiPages, verifyReport, health };
+  const agents = [
+    { id:"agent-esp32-s3-001", name:"ESP32 开发板", device_uuid:"esp32-s3-001", personality:"{}", voice:"default", enabled:1, created_at:"2026-07-11T13:31:20+08:00" },
+  ];
+
+  return { segments, memories, events, reminders, chatLog, speakers, persona, interventions, recommendations, wikiPages, verifyReport, health, agents };
 })();
 
 Object.assign(window, { MockData });

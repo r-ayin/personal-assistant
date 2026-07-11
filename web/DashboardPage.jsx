@@ -1,5 +1,17 @@
 function DashboardPage({ onNavigate }){
+  const { useState } = React;
   const m = window.MockData;
+  const [scanning, setScanning] = useState(false);
+
+  const doScan = async () => {
+    setScanning(true);
+    const r = await window.PA.post("/interventions/scan");
+    if (r) {
+      const intr = await window.PA.get("/interventions");
+      if (intr && intr.interventions) window.PA.updateMock("interventions", intr.interventions);
+    }
+    setScanning(false);
+  };
 
   return (
     <div className="p-8 max-w-[1320px] mx-auto">
@@ -37,7 +49,8 @@ function DashboardPage({ onNavigate }){
               <div className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-mute)]">today · proactive</div>
               <div className="text-[16px] font-semibold mt-1">今日干预 · 主动建议</div>
             </div>
-            <button className="btn btn-ghost text-[12px]"><i className="fas fa-bolt"></i> 立即扫描触发器</button>
+            <button className={"btn btn-ghost text-[12px] "+(scanning?"opacity-70":"")} onClick={doScan} disabled={scanning}>
+              <i className={"fas "+(scanning?"fa-spinner fa-spin":"fa-bolt")}></i> {scanning?"扫描中…":"立即扫描触发器"}
           </div>
 
           <div className="space-y-3">
@@ -56,7 +69,7 @@ function DashboardPage({ onNavigate }){
                     <p className="mt-2 text-[13.5px] leading-6 text-[var(--text)]">{it.message}</p>
                     <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-2 flex-wrap">
-                        {it.evidence.split(",").map(e=>(
+                        {(it.evidence||"").split(",").filter(Boolean).map(e=>(
                           <window.SourceChip key={e} type="memory" id={e.trim()} label={e.trim()} />
                         ))}
                       </div>

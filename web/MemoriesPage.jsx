@@ -1,17 +1,28 @@
 function MemoriesPage(){
-  const { useState, useMemo } = React;
+  const { useState, useEffect, useMemo } = React;
   const m = window.MockData;
   const [q,setQ] = useState("");
   const [kind,setKind] = useState("all");
+  const [backendList, setBackendList] = useState(null);
+
+  // search with debounce
+  useEffect(()=>{
+    if(!q.trim()){ setBackendList(null); return; }
+    const t = setTimeout(async ()=>{
+      const j = await window.PA.post("/memories/search", { q: q.trim(), limit: 20 });
+      if(j && j.memories) setBackendList(j.memories);
+    }, 400);
+    return ()=>clearTimeout(t);
+  },[q]);
 
   const kinds = ["all","event","preference","intention","emotion"];
+  const srcList = backendList !== null ? backendList : m.memories;
   const list = useMemo(()=>{
-    return m.memories.filter(x=>{
+    return srcList.filter(x=>{
       if(kind!=="all" && x.kind!==kind) return false;
-      if(q && !x.content.includes(q)) return false;
       return true;
     });
-  },[q,kind]);
+  },[kind, srcList]);
 
   const counts = kinds.reduce((acc,k)=>{
     acc[k] = k==="all"? m.memories.length : m.memories.filter(x=>x.kind===k).length;

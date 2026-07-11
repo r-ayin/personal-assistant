@@ -128,6 +128,7 @@
   <script type="text/babel" src="WikiPage.jsx"></script>
   <script type="text/babel" src="VerifyPage.jsx"></script>
   <script type="text/babel" src="SettingsPage.jsx"></script>
+  <script type="text/babel" src="AgentsPage.jsx"></script>
 
   <script type="text/babel">
     const { useState, useEffect } = React;
@@ -146,6 +147,7 @@
         wiki: window.WikiPage,
         verify: window.VerifyPage,
         settings: window.SettingsPage,
+        agents: window.AgentsPage,
       };
       const Page = pages[route] || (() => <div className="p-8 text-[var(--text-dim)]">页面加载中…</div>);
 

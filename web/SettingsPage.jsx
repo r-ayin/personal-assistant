@@ -4,13 +4,14 @@ function SettingsPage(){
 
   const backends = [
     { k:"stub",            t:"stub",            desc:"开发桩，零依赖" },
+    { k:"deepseek",        t:"deepseek",        desc:"DeepSeek API（默认 deepseek-v4-flash）" },
     { k:"anthropic_proxy", t:"anthropic_proxy", desc:"反代到 Claude 官方" },
-    { k:"ollama",          t:"ollama",          desc:"本地推理 (llama.cpp / gguf)" },
     { k:"openai_compat",   t:"openai_compat",   desc:"OpenAI 兼容端点（含 GLM /api/paas/v4）" },
     { k:"glm_anthropic",   t:"glm_anthropic",   desc:"GLM 的 Anthropic 兼容端点（含 budget_tokens）" },
+    { k:"ollama",          t:"ollama",          desc:"本地推理 (llama.cpp / gguf)" },
   ];
 
-  const [backend,setBackend]   = useState("openai_compat");
+  const [backend,setBackend]   = useState("deepseek");
   const [model,setModel]       = useState("glm-4.6");
   const [baseUrl,setBaseUrl]   = useState("https://open.bigmodel.cn/api/paas/v4");
   const [apiKey,setApiKey]     = useState("");

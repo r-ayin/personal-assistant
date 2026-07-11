@@ -283,15 +283,61 @@ def health():
 
 
 @app.get("/segments")
-def list_segments(limit: int = 50, offset: int = 0):
-    segs = storage.get_segments(limit, offset)
+def list_segments(limit: int = 50, offset: int = 0, agent_id: str = ""):
+    segs = storage.get_segments(limit, offset, agent_id)
     return {"segments": segs, "total": storage.count_segments()}
 
 
+@app.post("/segments/search")
+def search_segments(q: str = "", limit: int = 20):
+    segs = storage.get_segments(limit, 0)
+    if q:
+        ql = q.lower()
+        segs = [s for s in segs if ql in (s.get("text","") or "").lower()]
+    return {"segments": segs[:limit]}
+
+
 @app.get("/memories")
-def list_memories(limit: int = 50, offset: int = 0):
-    mems = storage.get_memories(limit, offset)
+def list_memories(limit: int = 50, offset: int = 0, agent_id: str = ""):
+    mems = storage.get_memories(limit, offset, agent_id)
     return {"memories": mems, "total": storage.count_memories()}
+
+
+@app.post("/memories/search")
+def search_memories(q: str = "", limit: int = 20):
+    if q:
+        mems = storage.search_memories_by_text(q, limit)
+    else:
+        mems = storage.get_memories(limit, 0)
+    return {"memories": mems}
+
+
+@app.post("/chat/clear")
+def clear_chat():
+    n = storage.clear_chat_log()
+    return {"deleted": n}
+
+
+@app.get("/interventions")
+def list_interventions(limit: int = 20):
+    items = storage.get_interventions(limit)
+    return {"interventions": items}
+
+
+@app.post("/interventions/scan")
+def scan_interventions():
+    """手动触发干预扫描（主动检查触发器并生成新干预）。"""
+    from . import proactive as _proactive
+    triggers = _proactive.check()
+    n = 0
+    for t in triggers:
+        storage.add_intervention({
+            "trigger_kind": t.get("kind", "unknown"),
+            "evidence": ",".join(m.get("id", "") for m in t.get("memories", [])),
+            "message": t.get("message", "检测到干预信号"),
+        })
+        n += 1
+    return {"generated": n, "triggers": triggers}
 
 
 @app.get("/profile")

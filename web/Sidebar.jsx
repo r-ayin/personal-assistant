@@ -31,6 +31,12 @@ function Sidebar({ route, onNavigate }){
       ],
     },
     {
+      label:"设备",
+      items:[
+        { key:"agents",    icon:"fa-microchip", text:"设备管理" },
+      ],
+    },
+    {
       label:"系统",
       items:[
         { key:"settings",  icon:"fa-sliders", text:"设置 / LLM" },

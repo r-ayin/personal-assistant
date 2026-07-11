@@ -23,10 +23,17 @@ function ChatPage(){
       id: Date.now()+1, role:"assistant",
       content: (r && r.reply) || "（无回复：后端不可达，回落 mock）",
       created_at: new Date().toISOString().replace("T"," ").slice(0,19),
-      evidence: [],
+      evidence: (r && r.evidence) || [],
     };
     setLogs(l=>[...l, reply]);
     setSending(false);
+  };
+
+  const doClear = async () => {
+    await window.PA.post("/chat/clear");
+    const j = await window.PA.get("/chat-log");
+    if (j && j.logs) window.PA.updateMock("chatLog", j.logs);
+    setLogs([]);
   };
 
   return (
@@ -38,7 +45,7 @@ function ChatPage(){
           icon="fa-comments"
           right={<>
             <window.Tag>connected: GLM-4.6</window.Tag>
-            <button className="btn btn-ghost"><i className="fas fa-eraser"></i> 清空</button>
+            <button className="btn btn-ghost" onClick={doClear}><i className="fas fa-eraser"></i> 清空</button>
           </>}
         />
       </div>
