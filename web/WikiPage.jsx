@@ -8,12 +8,16 @@ function WikiPage(){
 
   const allTags = useMemo(()=>{
     const s = new Set();
-    m.wikiPages.forEach(p=> p.tags.split(",").forEach(t=>s.add(t.trim())));
+    m.wikiPages.forEach(p=> {
+      const tags = Array.isArray(p.tags) ? p.tags : (p.tags||"").split(",").map(t=>t.trim());
+      tags.forEach(t=> t && s.add(t));
+    });
     return ["all", ...Array.from(s)];
   },[]);
 
   const filtered = m.wikiPages.filter(p=>{
-    if(tag!=="all" && !p.tags.split(",").map(x=>x.trim()).includes(tag)) return false;
+    const ptags = Array.isArray(p.tags) ? p.tags : (p.tags||"").split(",").map(x=>x.trim());
+    if(tag!=="all" && !ptags.includes(tag)) return false;
     if(q && !(p.title.includes(q) || p.body.includes(q))) return false;
     return true;
   });
@@ -77,7 +81,7 @@ function WikiPage(){
               </div>
 
               <div className="mt-4 flex flex-wrap gap-1.5">
-                {active.tags.split(",").map(t=><window.Tag key={t} color="blue">#{t.trim()}</window.Tag>)}
+                {(Array.isArray(active.tags) ? active.tags : (active.tags||"").split(",").filter(Boolean)).map(t =><window.Tag key={t} color="blue">#{t.trim()}</window.Tag>)}
               </div>
 
               <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-5">
