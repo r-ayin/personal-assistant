@@ -18,3 +18,4 @@ data/persona/*
 
 # pipeline-gate 运行态（triage current/history，见 /home/admin/workspace/PIPELINE-GATE.md）
 .pipeline/
+xiaozhi-dual-mode-firmware/
