@@ -1109,4 +1109,10 @@ config PC_PORT
     help
         后端 API 端口（默认 8000）。
 
+config PC_TOKEN
+    string "PC backend auth token"
+    default ""
+    help
+        PA_API_TOKEN，用于 WS 连接鉴权（?token=xxx）。为空则不传。
+
 endmenu

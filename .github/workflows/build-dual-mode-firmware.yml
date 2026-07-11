@@ -11,6 +11,10 @@ on:
         description: 'PC WebSocket port'
         required: false
         default: '8000'
+      pc_token:
+        description: 'PA_API_TOKEN for WS auth'
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -37,6 +41,7 @@ jobs:
           echo "CONFIG_BG_AUDIO_ENABLE=y" >> sdkconfig.defaults
           echo 'CONFIG_PC_IP="${{ github.event.inputs.pc_ip }}"' >> sdkconfig.defaults
           echo "CONFIG_PC_PORT=${{ github.event.inputs.pc_port }}" >> sdkconfig.defaults
+          echo 'CONFIG_PC_TOKEN="${{ github.event.inputs.pc_token }}"' >> sdkconfig.defaults
           cat sdkconfig.defaults.esp32s3 >> sdkconfig.defaults
 
       - name: Build firmware

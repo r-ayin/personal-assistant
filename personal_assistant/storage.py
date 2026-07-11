@@ -135,6 +135,14 @@ def search_memories(query_vec: np.ndarray, k: int = 5):
 
 
 # ── 计数与列表（供 API 端点和 health）──────────────────────────
+def db_size_mb() -> float:
+    try:
+        p = config.sqlite_path()
+        return round(p.stat().st_size / (1024 * 1024), 1) if p.exists() else 0
+    except Exception:
+        return 0
+
+
 def count_segments() -> int:
     with connect() as c:
         row = c.execute("SELECT COUNT(*) AS n FROM segments").fetchone()
