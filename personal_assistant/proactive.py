@@ -53,6 +53,11 @@ class CLINotifier:
             f.write(line + "\n")
 
 
+def check() -> list[dict]:
+    """模块级快捷方式（供 api.py import）。"""
+    return ProactiveEngine().check()
+
+
 class ProactiveEngine:
     def __init__(self, llm=None, notifier=None):
         self.llm = llm or get_llm()

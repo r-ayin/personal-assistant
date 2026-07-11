@@ -31,10 +31,18 @@ def _analytics(seg_dicts: list[dict], now_iso: str):
     con.close()
 
 
+def _agent_id_from_filename(name: str) -> str:
+    """从文件名提取 agent_id: 如 bg-xxx-agent=abc123.wav → abc123"""
+    import re as _re
+    m = _re.search(r"-agent=([\w-]+)\.", name)
+    return m.group(1) if m else ""
+
+
 def ingest_transcript(path: str, llm=None, embedder=None, diarizer=None) -> dict:
     llm = llm or get_llm()
     embedder = embedder or get_embedder()
     p = Path(path)
+    agent_id = _agent_id_from_filename(p.name)
     uts = transcript.parse(str(p))
     if not uts:
         return {"segments": 0}
@@ -52,11 +60,11 @@ def ingest_transcript(path: str, llm=None, embedder=None, diarizer=None) -> dict
             return {"segments": 0, "skipped": "already ingested"}
         for u in uts:
             sid = f"{p.stem}:{u.line}"
-            c.execute("INSERT OR IGNORE INTO segments(id,source_file,start_sec,end_sec,text,speaker,language,created_at,processed,time_kind) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                      (sid, p.name, u.start, u.end, u.text, u.speaker, "zh", now, 0, "received"))
+            c.execute("INSERT OR IGNORE INTO segments(id,source_file,start_sec,end_sec,text,speaker,language,created_at,processed,time_kind,agent_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                      (sid, p.name, u.start, u.end, u.text, u.speaker, "zh", now, 0, "received", agent_id))
             seg_dicts.append({"id": sid, "source_file": p.name, "start_sec": u.start,
                               "end_sec": u.end, "text": u.text, "speaker": u.speaker,
-                              "created_at": now})
+                              "created_at": now, "agent_id": agent_id})
         c.execute("INSERT OR REPLACE INTO ingested_files VALUES(?,?,?)", (p.name, now, len(uts)))
         c.commit()
     try:

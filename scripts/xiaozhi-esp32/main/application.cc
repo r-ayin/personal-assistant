@@ -714,11 +714,8 @@ void Application::HandleToggleChatEvent() {
     if (state == kDeviceStateIdle) {
         ListeningMode mode = GetDefaultListeningMode();
         if (!protocol_->IsAudioChannelOpened()) {
-            SetDeviceState(kDeviceStateConnecting);
-            // Schedule to let the state change be processed first (UI update)
-            Schedule([this, mode]() {
-                ContinueOpenAudioChannel(mode);
-            });
+            ESP_LOGI(TAG, "Audio channel not open, staying idle (will open on wake word)");
+            SetListeningMode(mode);
             return;
         }
         SetListeningMode(mode);
@@ -741,6 +738,7 @@ void Application::ContinueOpenAudioChannel(ListeningMode mode) {
 
     if (!protocol_->IsAudioChannelOpened()) {
         if (!protocol_->OpenAudioChannel()) {
+            ESP_LOGW(TAG, "OpenAudioChannel failed");
             return;
         }
     }
