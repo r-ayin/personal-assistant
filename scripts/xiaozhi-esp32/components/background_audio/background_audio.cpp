@@ -168,59 +168,22 @@ int bg_stop(void) {
 int bg_feed_pcm(const int16_t *pcm, size_t samples) {
     if (!pcm || samples == 0 || !g_ctx.mutex) return -1;
     xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
-    if (g_ctx.state == BG_STATE_STOPPED) {
+    if (g_ctx.state == BG_STATE_STOPPED || !g_ctx.connected) {
         xSemaphoreGive(g_ctx.mutex);
         return 0;
     }
 
+    /* 直推模式：跳过 VAD，每 PCM_FRAME_SAMPLES 直接发送 PCM 帧。
+       PC 端做 VAD 切段 + ASR + 唤醒词检测。 */
     size_t offset = 0;
-    while (offset < samples) {
-        size_t chunk = (samples - offset < (size_t)VAD_CHUNK_SAMPLES)
-                       ? (samples - offset) : (size_t)VAD_CHUNK_SAMPLES;
-        const int16_t *chunk_data = pcm + offset;
-
-        int64_t sum = 0;
-        for (size_t i = 0; i < chunk; i++) {
-            sum += (int32_t)chunk_data[i] * (int32_t)chunk_data[i];
-        }
-        int rms = (chunk > 0) ? (int)sqrt((double)(sum / chunk)) : 0;
-        bool voice = (rms >= g_ctx.vad_threshold);
-
-        if (!g_ctx.is_speaking) {
-            if (voice) {
-                g_ctx.onset_chunks++;
-                _append_pcm(chunk_data, chunk);
-                if (g_ctx.onset_chunks >= ONSET_CHUNKS) {
-                    g_ctx.is_speaking = true;
-                    g_ctx.speech_samples = g_ctx.pcm_buffer_count;
-                    g_ctx.silence_chunks = 0;
-                }
-            } else {
-                g_ctx.onset_chunks = 0;
-                if (g_ctx.pcm_buffer_count < (size_t)VAD_CHUNK_SAMPLES * ONSET_CHUNKS) {
-                    g_ctx.pcm_buffer_count = 0;
-                }
-            }
-        } else {
-            _append_pcm(chunk_data, chunk);
-            g_ctx.speech_samples += chunk;
-            if (voice) {
-                g_ctx.silence_chunks = 0;
-            } else {
-                g_ctx.silence_chunks++;
-                int silence_ms = g_ctx.silence_chunks *
-                    (VAD_CHUNK_SAMPLES * 1000 / g_ctx.sample_rate);
-                if (silence_ms >= g_ctx.silence_timeout_ms) {
-                    _flush_segment();
-                    g_ctx.is_speaking = false;
-                    g_ctx.onset_chunks = 0;
-                    g_ctx.silence_chunks = 0;
-                    g_ctx.speech_samples = 0;
-                }
-            }
-        }
-        offset += chunk;
+    while (offset + PCM_FRAME_SAMPLES <= samples) {
+        _tcp_send(FRAME_PCM, (const uint8_t*)(pcm + offset), PCM_FRAME_SAMPLES * 2);
+        offset += PCM_FRAME_SAMPLES;
     }
+    if (offset < samples) {
+        _tcp_send(FRAME_PCM, (const uint8_t*)(pcm + offset), (samples - offset) * 2);
+    }
+
     xSemaphoreGive(g_ctx.mutex);
     return 0;
 }
