@@ -274,13 +274,10 @@ void Application::Run() {
 
 void Application::HandleNetworkConnectedEvent() {
     ESP_LOGI(TAG, "Network connected");
-    auto state = GetDeviceState();
 
-    if (state == kDeviceStateStarting || state == kDeviceStateWifiConfiguring) {
-        // bg_audio-only mode: skip cloud activation, go straight to Idle
-        ESP_LOGI(TAG, "Network ready, entering bg_audio-only mode (skip OTA/MQTT)");
-        SetDeviceState(kDeviceStateIdle);
-    }
+    // bg_audio-only mode: skip all cloud activation, go straight to Idle
+    ESP_LOGI(TAG, "Network ready, entering bg_audio-only mode (skip OTA/MQTT)");
+    SetDeviceState(kDeviceStateIdle);
 
     // Update the status bar immediately to show the network state
     auto display = Board::GetInstance().GetDisplay();
