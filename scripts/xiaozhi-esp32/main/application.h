@@ -123,7 +123,9 @@ public:
     void StopBackgroundAudio();
     void ResetBackgroundAudio();
     bool IsBackgroundAudioActive() const;
-    
+
+    void ResetProtocol();
+
 private:
     Application();
     ~Application();
@@ -171,7 +173,6 @@ private:
     void CheckNewVersion();
     void InitializeProtocol();
     void ContinueWakeWordInvoke(const std::string& wake_word);
-    void ResetProtocol();
     void ShowActivationCode(const std::string& code, const std::string& message);
     void SetListeningMode(ListeningMode mode);
     ListeningMode GetDefaultListeningMode() const;
