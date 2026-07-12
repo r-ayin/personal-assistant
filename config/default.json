@@ -59,9 +59,9 @@
     "backend": "stub",
     "language": "zh",
     "faster_whisper": {
-      "model_size": "small",
-      "device": "cpu",
-      "compute_type": "int8",
+      "model_size": "medium",
+      "device": "cuda",
+      "compute_type": "float16",
       "vad_filter": true
     },
     "stub": {}
