@@ -50,9 +50,10 @@ bool DeviceStateMachine::IsValidTransition(DeviceState from, DeviceState to) con
                    to == kDeviceStateIdle;
 
         case kDeviceStateWifiConfiguring:
-            // Can go to activating (after wifi connected) or audio testing
+            // Can go to activating (after wifi connected), audio testing, or idle (bg_audio-only)
             return to == kDeviceStateActivating ||
-                   to == kDeviceStateAudioTesting;
+                   to == kDeviceStateAudioTesting ||
+                   to == kDeviceStateIdle;
 
         case kDeviceStateAudioTesting:
             // Can go back to wifi configuring
