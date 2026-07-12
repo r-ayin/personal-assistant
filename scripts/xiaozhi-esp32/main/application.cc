@@ -804,7 +804,6 @@ void Application::SetAecMode(AecMode mode) {
         }
 
         // bg_audio-only: no protocol channel to close
-        }
     });
 }
 
