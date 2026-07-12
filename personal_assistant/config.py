@@ -127,6 +127,15 @@ def inbox_dir() -> Path:
     return ROOT / "data" / "inbox"
 
 
+def api_token() -> str:
+    """返回 API Bearer token，按优先级：PA_API_TOKEN 环境变量 → config 'api.token' → 空串（无鉴权）。"""
+    import os
+    tok = os.environ.get("PA_API_TOKEN")
+    if tok:
+        return tok
+    return get("api.token", "")
+
+
 def ensure_dirs() -> None:
     for p in [sqlite_path().parent, duckdb_path().parent, persona_path().parent, inbox_dir()]:
         p.mkdir(parents=True, exist_ok=True)

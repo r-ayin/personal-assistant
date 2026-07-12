@@ -68,8 +68,8 @@
     "language": "zh",
     "faster_whisper": {
       "model_size": "small",
-      "device": "cpu",
-      "compute_type": "int8",
+      "device": "cuda",
+      "compute_type": "float16",
       "vad_filter": true
     },
     "stub": {}

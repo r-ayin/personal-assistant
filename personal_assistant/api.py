@@ -63,6 +63,20 @@ def _collect_proactive():
 
 app = FastAPI(title="personal-assistant", version="0.6.0", lifespan=lifespan)
 
+# ── 最小 Bearer token gate（PA-M-001）──────────────────────────────
+# 仅挂在暴露 PII 的敏感端点；/health /segments /settings/* 等保持开放。
+async def _require_bearer(request: Request) -> None:
+    auth = request.headers.get("authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="missing bearer token")
+    provided = auth[7:].strip()
+    expected = config.api_token()
+    # 常量时间比较防时序侧信道
+    import hmac
+    if not hmac.compare_digest(provided.encode(), expected.encode()):
+        raise HTTPException(status_code=403, detail="invalid token")
+
+
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                    allow_headers=["*"])
 
@@ -284,13 +298,13 @@ def list_segments(limit: int = 50, offset: int = 0):
     return {"segments": segs, "total": storage.count_segments()}
 
 
-@app.get("/memories")
+@app.get("/memories", dependencies=[Depends(_require_bearer)])
 def list_memories(limit: int = 50, offset: int = 0):
     mems = storage.get_memories(limit, offset)
     return {"memories": mems, "total": storage.count_memories()}
 
 
-@app.get("/profile")
+@app.get("/profile", dependencies=[Depends(_require_bearer)])
 def get_profile():
     return distill.load_persona() or {"error": "no profile"}
 
@@ -305,7 +319,7 @@ class ChatIn(BaseModel):
     message: str
 
 
-@app.post("/chat")
+@app.post("/chat", dependencies=[Depends(_require_bearer)])
 def chat_endpoint(body: ChatIn):
     reply, evidence = chat.Assistant().respond(body.message)
     storage.add_chat_log("user", body.message)
@@ -341,7 +355,7 @@ def list_speakers():
     return {"speakers": storage.get_speakers()}
 
 
-@app.get("/chat-log")
+@app.get("/chat-log", dependencies=[Depends(_require_bearer)])
 def chat_log(limit: int = 50):
     return {"chat_log": storage.get_chat_log(limit)}
 
@@ -415,7 +429,7 @@ def llm_settings_update(body: LLMSettingsIn):
     return {"backend": backend, "applied": applied, "effective": eff}
 
 
-@app.post("/inbox/upload")
+@app.post("/inbox/upload", dependencies=[Depends(_require_bearer)])
 async def inbox_upload(request: Request, filename: str = Query(...)):
     if not filename.endswith((".txt", ".srt")):
         raise HTTPException(400, "only .txt/.srt accepted")
