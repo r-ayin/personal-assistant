@@ -130,12 +130,15 @@ int bg_start(void) {
     g_ctx.state = BG_STATE_IDLE;
     xSemaphoreGive(g_ctx.mutex);
 
+    /* Create mgmt_task before connect — handles reconnect if needed */
+    if (g_ctx.mgmt_task_handle == NULL) {
+        xTaskCreate(_mgmt_task, "bg_tcp_mgmt", 4096, NULL, 2, &g_ctx.mgmt_task_handle);
+    }
+
     if (_tcp_connect() != 0) {
-        ESP_LOGE(TAG, "TCP 连接失败");
-        xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
-        g_ctx.state = BG_STATE_STOPPED;
-        xSemaphoreGive(g_ctx.mutex);
-        return -1;
+        ESP_LOGE(TAG, "TCP 连接失败，将自动重连");
+        /* mgmt_task will handle reconnection — don't set STOPPED */
+        return 0;
     }
     ESP_LOGI(TAG, "背景收集已启动");
     return 0;
@@ -152,6 +155,12 @@ int bg_stop(void) {
     g_ctx.state = BG_STATE_STOPPED;
     xSemaphoreGive(g_ctx.mutex);
     _tcp_disconnect();
+    /* Kill mgmt_task for clean shutdown */
+    if (g_ctx.mgmt_task_handle) {
+        TaskHandle_t h = g_ctx.mgmt_task_handle;
+        g_ctx.mgmt_task_handle = NULL;
+        vTaskDelete(h);
+    }
     ESP_LOGI(TAG, "背景收集已停止");
     return 0;
 }
@@ -313,25 +322,29 @@ static int _tcp_connect(void) {
     g_ctx.connected = true;
     g_ctx.reconnect_attempt = 0;
 
-    if (g_ctx.mgmt_task_handle == NULL) {
-        xTaskCreate(_mgmt_task, "bg_tcp_mgmt", 2048, NULL, 2, &g_ctx.mgmt_task_handle);
-    }
-
     ESP_LOGI(TAG, "TCP 已连接: %s:%d", g_ctx.host, g_ctx.port);
     return 0;
 }
 
 static void _tcp_disconnect(void) {
-    if (g_ctx.mgmt_task_handle) {
-        TaskHandle_t h = g_ctx.mgmt_task_handle;
-        g_ctx.mgmt_task_handle = NULL;
-        vTaskDelete(h);
-    }
     if (g_ctx.sock >= 0) {
         close(g_ctx.sock);
         g_ctx.sock = -1;
     }
     g_ctx.connected = false;
+    /* Schedule reconnect via mgmt_task (keep task alive) */
+    if (g_ctx.state != BG_STATE_STOPPED && g_ctx.mgmt_task_handle) {
+        int64_t now = esp_timer_get_time() / 1000;
+        int delay = RECONNECT_BASE_MS;
+        if (g_ctx.reconnect_attempt < 6) {
+            delay = RECONNECT_BASE_MS << g_ctx.reconnect_attempt;
+        } else {
+            delay = RECONNECT_MAX_MS;
+        }
+        g_ctx.reconnect_attempt++;
+        g_ctx.reconnect_at = now + delay;
+        ESP_LOGI(TAG, "重连计划: %dms 后", delay);
+    }
 }
 
 static void _tcp_send(uint8_t type, const uint8_t *payload, size_t len) {
@@ -376,7 +389,7 @@ static void _mgmt_task(void *pv) {
             idle_pcm_count++;
             if (idle_pcm_count >= 5) {  // 5 秒
                 idle_pcm_count = 0;
-                int16_t silence[PCM_FRAME_SAMPLES] = {0};
+                static int16_t silence[PCM_FRAME_SAMPLES];
                 _tcp_send(FRAME_PCM, (uint8_t*)silence, PCM_FRAME_SAMPLES * 2);
             }
         } else {
