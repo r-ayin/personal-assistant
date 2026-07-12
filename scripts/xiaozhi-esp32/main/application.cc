@@ -605,8 +605,8 @@ void Application::HandleStateChangedEvent() {
             display->SetStatus(Lang::Strings::STANDBY);
             display->ClearChatMessages();
             display->SetEmotion("neutral");
-            audio_service_.EnableVoiceProcessing(true);
-            audio_service_.EnableWakeWordDetection(true);
+            audio_service_.EnableVoiceProcessing(false);
+            audio_service_.EnableWakeWordDetection(false);
             // Resume background audio collection when idle
             if (bg_inited_) {
                 StartBackgroundAudio();
