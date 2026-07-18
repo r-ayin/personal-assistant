@@ -249,8 +249,11 @@ int NoAudioCodec::Read(int16_t* dest, int samples) {
 
     samples = bytes_read / sizeof(int32_t);
     for (int i = 0; i < samples; i++) {
-        int32_t value = bit32_buffer[i] >> 12;
-        dest[i] = (value > INT16_MAX) ? INT16_MAX : (value < -INT16_MAX) ? -INT16_MAX : (int16_t)value;
+        // INMP441 输出 24-bit 数据置于 32-bit I2S 槽中。
+        // >>12 会放大 16 倍导致削波；>>16 过度衰减导致 ASR 无法识别。
+        // >>8 直接取中间 16-bit，保留完整动态范围且不削波。
+        int32_t value = bit32_buffer[i] >> 8;
+        dest[i] = (value > INT16_MAX) ? INT16_MAX : (value < INT16_MIN) ? INT16_MIN : (int16_t)value;
     }
     return samples;
 }
