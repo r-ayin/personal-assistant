@@ -17,6 +17,7 @@ data class ChatUiState(
     val sending: Boolean = false,
     val draft: String = "",
     val error: String? = null,
+    val conversationId: String? = null,
 )
 
 @HiltViewModel
@@ -42,11 +43,19 @@ class ChatViewModel @Inject constructor(
         if (msg.isBlank() || _ui.value.sending) return
         val userEntry = ChatLogEntry(role = "user", content = msg, created_at = nowIsoLocal())
         _ui.update { it.copy(draft = "", sending = true, logs = it.logs + userEntry) }
+        val conversationId = _ui.value.conversationId
         viewModelScope.launch {
-            repo.chat(msg)
+            repo.chat(msg, conversationId)
                 .onSuccess { out ->
                     val reply = ChatLogEntry(role = "assistant", content = out.reply, created_at = nowIsoLocal())
-                    _ui.update { it.copy(sending = false, logs = it.logs + reply, error = null) }
+                    _ui.update {
+                        it.copy(
+                            sending = false,
+                            logs = it.logs + reply,
+                            error = null,
+                            conversationId = out.conversation_id?.takeIf(String::isNotBlank) ?: it.conversationId,
+                        )
+                    }
                 }
                 .onFailure { e ->
                     _ui.update { it.copy(sending = false, error = e.message ?: "发送失败") }
