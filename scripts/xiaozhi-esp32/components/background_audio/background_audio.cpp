@@ -28,6 +28,7 @@
 #define FRAME_PING     2   /* 心跳 */
 
 #define PING_INTERVAL_MS     30000
+#define PONG_TIMEOUT_MS      60000   /* 2x ping interval, 超时强制重连 */
 #define RECONNECT_BASE_MS    1000
 #define RECONNECT_MAX_MS     30000
 
@@ -38,6 +39,7 @@
 
 typedef struct {
     char ws_uri[160];
+    char ws_headers[128];
     int sample_rate;
     int vad_threshold;
     int silence_timeout_ms;
@@ -61,6 +63,7 @@ typedef struct {
     int reconnect_attempt;
     int64_t reconnect_at;
     int64_t last_ping_ms;
+    int64_t last_pong_ms;           /* WS 最后活跃时刻，心跳超时判断用 */
 
     SemaphoreHandle_t mutex;
     TaskHandle_t ws_task_handle;
@@ -87,12 +90,20 @@ int bg_init(const char *pc_ip, int pc_port, const char *token) {
     g_ctx.min_segment_ms = 300;
     g_ctx.state = BG_STATE_STOPPED;
 
+    snprintf(g_ctx.ws_uri, sizeof(g_ctx.ws_uri),
+             "ws://%s:%d/ws/audio", pc_ip, pc_port);
     if (token && strlen(token) > 0) {
-        snprintf(g_ctx.ws_uri, sizeof(g_ctx.ws_uri),
-                 "ws://%s:%d/ws/audio?token=%s", pc_ip, pc_port, token);
-    } else {
-        snprintf(g_ctx.ws_uri, sizeof(g_ctx.ws_uri),
-                 "ws://%s:%d/ws/audio", pc_ip, pc_port);
+        // 头部 128 字节有界；token 过长时不得带截断后的凭据连接（会静默 401），
+        // 直接放弃鉴权头并告警——服务端开启鉴权时该连接会被拒，但不会误导排查。
+        int needed = snprintf(NULL, 0, "Authorization: Bearer %s\r\n", token);
+        if (needed >= (int)sizeof(g_ctx.ws_headers)) {
+            ESP_LOGW(TAG, "ws token too long (%d > %d), header disabled",
+                     needed - 22, (int)sizeof(g_ctx.ws_headers));
+            g_ctx.ws_headers[0] = '\0';
+        } else {
+            snprintf(g_ctx.ws_headers, sizeof(g_ctx.ws_headers),
+                     "Authorization: Bearer %s\r\n", token);
+        }
     }
 
     g_ctx.mutex = xSemaphoreCreateMutex();
@@ -119,7 +130,9 @@ int bg_init(const char *pc_ip, int pc_port, const char *token) {
     }
     g_ctx.pcm_buffer_count = 0;
 
-    ESP_LOGI(TAG, "初始化完成: %s 阈值=%d", g_ctx.ws_uri, g_ctx.vad_threshold);
+    ESP_LOGI(TAG, "初始化完成: ws://%s:%d/ws/audio 鉴权=%s 阈值=%d",
+             pc_ip, pc_port, token && strlen(token) > 0 ? "已配置" : "未配置",
+             g_ctx.vad_threshold);
     return 0;
 }
 
@@ -139,6 +152,7 @@ int bg_start(void) {
     g_ctx.pcm_buffer_count = 0;
     g_ctx.reconnect_attempt = 0;
     g_ctx.last_ping_ms = 0;
+    g_ctx.last_pong_ms = 0;
     g_ctx.state = BG_STATE_IDLE;
 
     xSemaphoreGive(g_ctx.mutex);
@@ -183,55 +197,9 @@ int bg_feed_pcm(const int16_t *pcm, size_t samples) {
         return 0;
     }
 
-    /* 分块做 RMS VAD */
-    size_t offset = 0;
-    while (offset < samples) {
-        size_t chunk = (samples - offset < (size_t)VAD_CHUNK_SAMPLES)
-                       ? (samples - offset) : (size_t)VAD_CHUNK_SAMPLES;
-        const int16_t *chunk_data = pcm + offset;
-
-        int64_t sum = 0;
-        for (size_t i = 0; i < chunk; i++) {
-            sum += (int32_t)chunk_data[i] * (int32_t)chunk_data[i];
-        }
-        int rms = (chunk > 0) ? (int)sqrt((double)(sum / chunk)) : 0;
-        bool voice = (rms >= g_ctx.vad_threshold);
-
-        if (!g_ctx.is_speaking) {
-            if (voice) {
-                g_ctx.onset_chunks++;
-                _append_pcm(chunk_data, chunk);
-                if (g_ctx.onset_chunks >= ONSET_CHUNKS) {
-                    g_ctx.is_speaking = true;
-                    g_ctx.speech_samples = g_ctx.pcm_buffer_count;
-                    g_ctx.silence_chunks = 0;
-                }
-            } else {
-                g_ctx.onset_chunks = 0;
-                if (g_ctx.pcm_buffer_count < (size_t)VAD_CHUNK_SAMPLES * ONSET_CHUNKS) {
-                    g_ctx.pcm_buffer_count = 0;
-                }
-            }
-        } else {
-            _append_pcm(chunk_data, chunk);
-            g_ctx.speech_samples += chunk;
-            if (voice) {
-                g_ctx.silence_chunks = 0;
-            } else {
-                g_ctx.silence_chunks++;
-                int silence_ms = g_ctx.silence_chunks *
-                    (VAD_CHUNK_SAMPLES * 1000 / g_ctx.sample_rate);
-                if (silence_ms >= g_ctx.silence_timeout_ms) {
-                    _flush_segment();
-                    g_ctx.is_speaking = false;
-                    g_ctx.onset_chunks = 0;
-                    g_ctx.silence_chunks = 0;
-                    g_ctx.speech_samples = 0;
-                }
-            }
-        }
-        offset += chunk;
-    }
+    /* 缓冲模式：仅 memcpy 到 PSRAM 环形缓冲，由 _ws_task 异步发送。
+     * 不在音频输入任务里做 WS 发送，避免 malloc + send 阻塞导致 I2S DMA 溢出。 */
+    _append_pcm(pcm, samples);
 
     xSemaphoreGive(g_ctx.mutex);
     return 0;
@@ -245,6 +213,7 @@ int bg_reset(void) {
     g_ctx.silence_chunks = 0;
     g_ctx.speech_samples = 0;
     g_ctx.pcm_buffer_count = 0;
+    g_ctx.last_pong_ms = 0;
     xSemaphoreGive(g_ctx.mutex);
     return 0;
 }
@@ -302,40 +271,43 @@ static void _flush_segment(void) {
 
 static void _ws_event_handler(void *h, esp_event_base_t b,
                               int32_t id, void *d) {
+    xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
+    g_ctx.last_pong_ms = (esp_timer_get_time() / 1000);  /* 任何事件=连接活跃 */
     switch (id) {
         case WEBSOCKET_EVENT_CONNECTED:
             ESP_LOGI(TAG, "WS 已连接");
-            xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
             g_ctx.ws_connected = true;
             g_ctx.reconnect_attempt = 0;
-            xSemaphoreGive(g_ctx.mutex);
             break;
-        case WEBSOCKET_EVENT_DISCONNECTED:
-        {
+        case WEBSOCKET_EVENT_DISCONNECTED: {
             ESP_LOGW(TAG, "WS 断开");
-            xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
             g_ctx.ws_connected = false;
             g_ctx.reconnect_attempt++;
             int delay = RECONNECT_BASE_MS * (1 << (g_ctx.reconnect_attempt > 5 ? 5
                                                  : g_ctx.reconnect_attempt));
             if (delay > RECONNECT_MAX_MS) delay = RECONNECT_MAX_MS;
             g_ctx.reconnect_at = (esp_timer_get_time() / 1000) + delay;
-            xSemaphoreGive(g_ctx.mutex);
             break;
         }
+        case WEBSOCKET_EVENT_ERROR:
+            ESP_LOGE(TAG, "WS 错误");
+            break;
         default:
             break;
     }
+    xSemaphoreGive(g_ctx.mutex);
 }
 
 static esp_err_t _connect_ws(void) {
     if (g_ctx.ws_client) _disconnect_ws();
 
-    esp_websocket_client_config_t cfg = {
-        .uri = g_ctx.ws_uri,
-        .task_stack = 4096,
-        .buffer_size = 4096,
-    };
+    esp_websocket_client_config_t cfg = {};
+    cfg.uri = g_ctx.ws_uri;
+    cfg.headers = g_ctx.ws_headers[0] != '\0' ? g_ctx.ws_headers : NULL;
+    cfg.task_stack = 4096;
+    cfg.buffer_size = 4096;
+    cfg.network_timeout_ms = 200;      /* > WiFi MAX_MODEM 信标间隔 102ms */
+    cfg.reconnect_timeout_ms = 5000;
     g_ctx.ws_client = esp_websocket_client_init(&cfg);
     if (!g_ctx.ws_client) return ESP_FAIL;
 
@@ -369,11 +341,40 @@ static void _disconnect_ws(void) {
 }
 
 static void _ws_task(void *pv) {
+    int16_t local_pcm[PCM_FRAME_SAMPLES * 2];  /* 最多 2 帧的本地拷贝 */
     while (g_ctx.ws_task_handle) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(30));
 
         xSemaphoreTake(g_ctx.mutex, portMAX_DELAY);
         int64_t now = esp_timer_get_time() / 1000;
+
+        /* 从环形缓冲拷贝最多 2 帧到本地（持锁，但只做 memcpy/memmove，微秒级） */
+        size_t frames_to_send = 0;
+        if (g_ctx.ws_connected && g_ctx.pcm_buffer_count >= PCM_FRAME_SAMPLES) {
+            /* 缓冲超过 1 秒 → 丢弃旧数据 */
+            if (g_ctx.pcm_buffer_count > 16000) {
+                size_t discard = g_ctx.pcm_buffer_count - 16000;
+                memmove(g_ctx.pcm_buffer, g_ctx.pcm_buffer + discard,
+                        16000 * sizeof(int16_t));
+                g_ctx.pcm_buffer_count = 16000;
+            }
+            /* 最多取 2 帧 */
+            frames_to_send = 2;
+            if (frames_to_send * PCM_FRAME_SAMPLES > g_ctx.pcm_buffer_count) {
+                frames_to_send = g_ctx.pcm_buffer_count / PCM_FRAME_SAMPLES;
+            }
+            if (frames_to_send > 0) {
+                size_t copy_samples = frames_to_send * PCM_FRAME_SAMPLES;
+                memcpy(local_pcm, g_ctx.pcm_buffer, copy_samples * sizeof(int16_t));
+                /* 移出已拷贝部分 */
+                size_t remaining = g_ctx.pcm_buffer_count - copy_samples;
+                if (remaining > 0) {
+                    memmove(g_ctx.pcm_buffer, g_ctx.pcm_buffer + copy_samples,
+                            remaining * sizeof(int16_t));
+                }
+                g_ctx.pcm_buffer_count = remaining;
+            }
+        }
 
         /* 心跳 */
         if (g_ctx.ws_connected && now - g_ctx.last_ping_ms > PING_INTERVAL_MS) {
@@ -381,15 +382,41 @@ static void _ws_task(void *pv) {
             _send_control(FRAME_PING);
         }
 
+        /* 心跳超时 */
+        if (g_ctx.ws_connected
+            && g_ctx.last_pong_ms > 0
+            && now - g_ctx.last_pong_ms > PONG_TIMEOUT_MS) {
+            ESP_LOGW(TAG, "心跳超时 %lldms，强制重连", (long long)(now - g_ctx.last_pong_ms));
+            if (g_ctx.ws_client) {
+                esp_websocket_client_stop(g_ctx.ws_client);
+                esp_websocket_client_destroy(g_ctx.ws_client);
+                g_ctx.ws_client = NULL;
+            }
+            g_ctx.ws_connected = false;
+            g_ctx.reconnect_attempt++;
+            g_ctx.reconnect_at = now + RECONNECT_BASE_MS;
+        }
+
         /* 重连 */
+        bool need_reconnect = false;
         if (!g_ctx.ws_connected && g_ctx.state != BG_STATE_STOPPED
             && g_ctx.reconnect_at > 0 && now >= g_ctx.reconnect_at) {
-            ESP_LOGI(TAG, "尝试重连...");
-            _connect_ws();
+            need_reconnect = true;
             g_ctx.reconnect_at = 0;
         }
 
         xSemaphoreGive(g_ctx.mutex);
+
+        /* WS 发送在锁外执行：不阻塞音频输入任务 */
+        for (size_t i = 0; i < frames_to_send; i++) {
+            _send_pcm(local_pcm + i * PCM_FRAME_SAMPLES, PCM_FRAME_SAMPLES);
+        }
+
+        /* 重连也在锁外执行（_connect_ws 内部会自己管理锁） */
+        if (need_reconnect) {
+            ESP_LOGI(TAG, "尝试重连...");
+            _connect_ws();
+        }
     }
     vTaskDelete(NULL);
 }

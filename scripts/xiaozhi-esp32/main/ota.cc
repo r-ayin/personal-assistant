@@ -24,6 +24,15 @@
 
 #define TAG "Ota"
 
+namespace {
+
+bool ShouldPreserveLocalWebsocketSetting(const char* key) {
+    return strlen(CONFIG_PA_SERVER_URL) > 0 &&
+           (strcmp(key, "url") == 0 || strcmp(key, "token") == 0);
+}
+
+} // namespace
+
 
 Ota::Ota() {
 #ifdef ESP_EFUSE_BLOCK_USR_DATA
@@ -170,6 +179,12 @@ esp_err_t Ota::CheckVersion() {
         Settings settings("websocket", true);
         cJSON *item = NULL;
         cJSON_ArrayForEach(item, websocket) {
+            // 凭据保护必须先按 key 判断再按类型处理：
+            // 异常 OTA 响应把 url/token 表示为数字等非字符串时也不得覆盖本地配置。
+            if (ShouldPreserveLocalWebsocketSetting(item->string)) {
+                ESP_LOGI(TAG, "Keeping local websocket %s", item->string);
+                continue;
+            }
             if (cJSON_IsString(item)) {
                 if (settings.GetString(item->string) != item->valuestring) {
                     settings.SetString(item->string, item->valuestring);
