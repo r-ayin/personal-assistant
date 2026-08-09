@@ -158,6 +158,33 @@ v1 的稳定版本为 1.9.2，可以通过 `git checkout v1` 来切换到 v1 版
 
 如果你有任何想法或建议，请随时提出 Issues 或加入 [Discord](https://discord.gg/C759fGMBcZ) 或 QQ 群：1011329060
 
+## 本地 Token 配置（personal-assistant 定制）
+
+鉴权 token 不入库。本地构建时创建 `sdkconfig.local`（已 gitignore）：
+
+```ini
+CONFIG_PA_SERVER_TOKEN="<PA_API_TOKEN>"
+```
+
+- 本地构建：`build-local.ps1` / `build-idf.py` 自动检测并通过 `SDKCONFIG_DEFAULTS` 链式覆盖（sdkconfig.defaults → sdkconfig.defaults.esp32s3 → sdkconfig.local）
+- 云编译：GitHub Actions 从 `secrets.PA_WS_TOKEN` 注入
+- token 来源：PA 后端 `.env` 的 `PA_API_TOKEN`。**仅改 Kconfig fallback 默认值时需要重新编译烧录**；若设备 NVS 已写入 `websocket:token`，换 token 只需更新 NVS，无需重编译（见下方 NVS 优先）
+- 修改 sdkconfig.local 后需 `idf.py reconfigure`（或删除 build/ 重新配置）才生效
+
+### NVS 优先（换 token 免重编译）
+
+固件 v0.10.1 起 token 读取顺序：**NVS(websocket:token) → Kconfig 回落**。
+`websocket:token` 已由配网或本地配置写入 NVS 时，固件直接使用该值，不再无条件覆盖。
+配置了 `CONFIG_PA_SERVER_URL` 的本地 PA 模式还会忽略官方 OTA 响应中的
+`websocket.url` 和 `websocket.token`，避免远端默认值覆盖本地凭据；协议版本等非凭据字段仍会同步。
+
+```bash
+# 经串口、配网或维护工具写入 NVS（websocket:token）
+```
+
+换 token 只改 NVS 即可（无需重编译烧录）；Kconfig 默认值仅在 NVS 无值/为空时兜底。
+未配置 `CONFIG_PA_SERVER_URL` 的官方服务器模式仍按 OTA websocket 配置正常更新。
+
 ## Star History
 
 <a href="https://star-history.com/#78/xiaozhi-esp32&Date">

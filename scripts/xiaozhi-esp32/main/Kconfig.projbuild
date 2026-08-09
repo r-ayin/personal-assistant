@@ -1110,3 +1110,20 @@ config PC_PORT
         后端 API 端口（默认 8000）。
 
 endmenu
+
+menu "Personal Assistant Server"
+
+config PA_SERVER_URL
+    string "Personal Assistant WebSocket URL"
+    default ""
+    help
+        If set, the device will connect to this WebSocket server for chat instead of xiaozhi.me.
+        Example: ws://192.168.31.233:8004/ws/xiaozhi
+
+config PA_SERVER_TOKEN
+    string "Personal Assistant Auth Token"
+    default ""
+    help
+        Bearer token for the personal assistant WebSocket server.
+
+endmenu

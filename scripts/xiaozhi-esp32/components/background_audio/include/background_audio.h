@@ -1,7 +1,8 @@
 /*
  * background_audio.h — 背景音频收集模块
  *
- * 独立组件，通过 FeedPCM() 接收音频数据 → VAD 分割 → Opus 编码 → WS 推流到 PC。
+ * 独立组件，通过 bg_feed_pcm() 接收 16kHz/16bit PCM 数据 → WS 直推到 PC。
+ * PC 端 /ws/audio 做 RMS VAD 切段 → WAV → inbox → scan_inbox。
  * xiaozhi-esp32 在 idle 状态时持续运行，对话时自动暂停。
  */
 #pragma once
