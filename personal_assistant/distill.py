@@ -23,6 +23,12 @@ skills(技能)、knowledge(知识地图)、thinking_patterns(思维模式)、pre
 - 保留旧档案中仍成立的内容，仅增量更新。
 返回 JSON：{"profile":{<9 维度>}, "change_summary":"依据...做了哪些更新"}"""
 
+SYSTEM_NARRATIVE = """[TASK:NARRATIVE]
+你是用户叙事档案生成器。输入 profile（9 维结构化档案）、scene_navigation（活跃场景）、
+old_narrative（上一版叙事，可能为空）。输出 ≤2000 字符的叙事体档案（纯文本，不用 JSON）：
+第一人称观察者视角，含核心特质、长期偏好、近期目标/场景、交互要点。
+增量模式（有 old_narrative）：保留稳定信息，追加/修订演变部分。只输出叙事文本。"""
+
 
 def normalize(profile: dict) -> dict:
     p = dict(profile or {})
@@ -39,9 +45,29 @@ def _memories_for_distill() -> list[dict]:
     return [m for m in mems if (m.get("created_at") or "") > last]
 
 
+def inferred_profile() -> dict:
+    inferred, _summary, _version = storage.latest_persona()
+    return normalize(inferred) if inferred else normalize({})
+
+
 def current_profile() -> dict:
-    p, _sum, _v = storage.latest_persona()
-    return normalize(p) if p else normalize({})
+    effective = inferred_profile()
+    for feedback in storage.list_profile_feedback():
+        dimension = feedback["dimension"]
+        if dimension not in DIMENSIONS:
+            continue
+        value = feedback["value"]
+        current = effective[dimension]
+        if isinstance(current, list):
+            if feedback["action"] == "add" and value not in current:
+                current.append(value)
+            elif feedback["action"] == "suppress":
+                effective[dimension] = [item for item in current if item != value]
+        elif feedback["action"] == "add":
+            effective[dimension] = value
+        elif feedback["action"] == "suppress" and current == value:
+            effective[dimension] = ""
+    return effective
 
 
 class DistillationEngine:
@@ -53,7 +79,14 @@ class DistillationEngine:
         min_seg = config.get("distill.min_segments_for_distill", 5)
         if len(mems) < min_seg:
             return {"skipped": True, "reason": f"新记忆 {len(mems)} < {min_seg}", "memories": len(mems)}
-        cur = current_profile()
+        # v0.10：distill 前先整合未处理的 L2 场景（narrative 需要场景导航）
+        try:
+            from . import scenes
+            if scenes.pending_count() > 0:
+                scenes.integrate(llm=self.llm)
+        except Exception as e:
+            print(f"[distill] scene integrate skipped: {e}")
+        cur = inferred_profile()
         mem_json = [{"kind": m.get("kind"), "content": m.get("content"),
                      "evidence": m.get("evidence")} for m in mems]
         user = ("Current profile (JSON or null):\n" + json.dumps(cur, ensure_ascii=False)
@@ -68,7 +101,51 @@ class DistillationEngine:
             return {"skipped": True, "reason": "LLM 未返回合法 profile"}
         profile = normalize(out["profile"])
         change = out.get("change_summary", "")
-        version = storage.save_persona_version(profile, change)
+        narrative = self._gen_narrative(profile)
+        version = storage.save_persona_version(profile, change, narrative=narrative)
         storage.kv_set("last_distill_at", storage.now_iso())
         return {"skipped": False, "version": version, "change_summary": change,
-                "memories_distilled": len(mems)}
+                "memories_distilled": len(mems), "narrative_chars": len(narrative)}
+
+    def _gen_narrative(self, profile: dict) -> str:
+        """v0.10 L3 叙事档案：从 9 维档案 + 场景导航生成 ≤2000 字符叙事体。"""
+        try:
+            from . import scenes
+            nav = scenes.navigation()
+        except Exception:
+            nav = ""
+        old = storage.latest_narrative()
+        payload = {"profile": profile, "scene_navigation": nav, "old_narrative": old}
+        try:
+            text = self.llm.chat(SYSTEM_NARRATIVE, json.dumps(payload, ensure_ascii=False))
+        except Exception as e:
+            print(f"[distill] narrative gen failed: {e}")
+            return ""
+        text = (text or "").strip()
+        # LLM 可能回吐 JSON 包裹——只取字符串内容
+        if text.startswith("{") or text.startswith("["):
+            try:
+                v = json.loads(text)
+                text = v.get("narrative", text) if isinstance(v, dict) else text
+            except Exception:
+                pass
+        return text[:2000]
+
+
+def run() -> int:
+    """模块级便捷入口，供 api.py /distill 调用。返回新增/更新的版本号，0 表示跳过。"""
+    r = DistillationEngine().run()
+    return r.get("version", 0) if not r.get("skipped") else 0
+
+
+def load_persona() -> dict | None:
+    """api.py /profile 用别名。返回 latest persona 或 None。"""
+    from . import storage
+    p, _sum, _v = storage.latest_persona()
+    return p
+
+
+def current_version() -> int:
+    """api.py /status 用别名。"""
+    _p, _s, v = storage.latest_persona()
+    return v or 0

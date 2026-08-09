@@ -1,12 +1,55 @@
 """ingest.py — 新接入编排：设备转录文本(+可选音频) → 解析 → 说话人归属 → 入库
-→ 记忆抽取 + 日历事件 + 提醒。ASR 不再做（设备已转录）。
+→ Pipeline 处理链。ASR 不再做（设备已转录）。
+
+Pipeline 是可插拔的处理步骤列表。默认管线 = 记忆抽取 + 日历 + 提醒 + 反幻觉复查。
+可通过注入自定义 pipeline 扩展或替换步骤，不修改本文件。
 """
 from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from . import config, storage, transcript, speaker, memory, calendar, reminders
 from .llm import get_llm, get_embedder
+
+# Pipeline 步骤签：(segments, metadata) -> dict
+# metadata 包含: {"llm": ..., "embedder": ..., "reference": datetime, ...}
+PipelineStep = Callable[[list[dict], dict], dict]
+
+
+def _default_pipeline(llm, embedder, reference) -> list[PipelineStep]:
+    """创建默认处理管线（v0.10：记忆抽取走两阶段去重，可选场景整合）。"""
+    def _memory_step(segs, meta):
+        user_segs = [s for s in segs if s.get("speaker") == "user"] or segs
+        _llm = meta.get("llm", llm)
+        _embedder = meta.get("embedder", embedder)
+        mems = memory.filter_low_priority(memory.extract(user_segs, _llm))
+        if config.get("memory.dedup_enabled", True):
+            counts = memory.dedup_and_store(mems, _embedder, _llm)
+            return {"memories": counts["stored"], "memories_dedup": counts}
+        n = memory.add(mems, _embedder)
+        return {"memories": n}
+
+    def _calendar_step(segs, meta):
+        n = calendar.extract(segs, meta.get("reference", reference), meta.get("llm", llm))
+        return {"events": n}
+
+    def _reminders_step(segs, meta):
+        n = reminders.extract(segs, meta.get("reference", reference), meta.get("llm", llm))
+        return {"reminders": n}
+
+    def _scene_step(segs, meta):
+        # v0.10 L2：新增记忆达到阈值时触发场景整合（verify 前）
+        from . import scenes
+        if scenes.pending_count() >= config.get("memory.scene_min_memories", 10):
+            return {"scenes": scenes.integrate(llm=meta.get("llm", llm))}
+        return {"scenes": None}
+
+    def _verify_step(segs, meta):
+        from . import verify
+        return {"verify": verify.run_all()}
+
+    return [_memory_step, _calendar_step, _reminders_step, _scene_step, _verify_step]
 
 
 def _paired_audio(p: Path) -> Path | None:
@@ -31,7 +74,8 @@ def _analytics(seg_dicts: list[dict], now_iso: str):
     con.close()
 
 
-def ingest_transcript(path: str, llm=None, embedder=None, diarizer=None) -> dict:
+def ingest_transcript(path: str, llm=None, embedder=None, diarizer=None,
+                      pipeline: list[PipelineStep] | None = None) -> dict:
     llm = llm or get_llm()
     embedder = embedder or get_embedder()
     p = Path(path)
@@ -42,8 +86,6 @@ def ingest_transcript(path: str, llm=None, embedder=None, diarizer=None) -> dict
     audio = _paired_audio(p)
     uts = diarizer.attribute(uts, audio_path=str(audio) if audio else None)
 
-    # 记录时间=系统收文时刻(now)；非真实发生时间(无设备时间戳不可得,见 time_kind='received')。
-    # start_sec/end_sec 仅录音内偏移(排序用)，不冒充墙钟。
     reference = datetime.now().astimezone()
     now = reference.isoformat(timespec="seconds")
     seg_dicts = []
@@ -64,15 +106,18 @@ def ingest_transcript(path: str, llm=None, embedder=None, diarizer=None) -> dict
     except Exception as e:
         print(f"[ingest] duckdb analytics skipped: {e}")
 
-    user_segs = [s for s in seg_dicts if s["speaker"] == "user"] or seg_dicts
-    m_n = memory.extract_and_store(user_segs, llm, embedder)
-    ev_n = calendar.extract(seg_dicts, reference, llm)
-    rm_n = reminders.extract(seg_dicts, reference, llm)
-    # 反幻觉复查：确定性重解 when_dt + 溯源校验 + 删不落地项
-    from . import verify
-    vrep = verify.run_all()
-    return {"segments": len(uts), "memories": m_n, "events": ev_n, "reminders": rm_n,
-            "verify": vrep}
+    # 运行管线
+    steps = pipeline if pipeline is not None else _default_pipeline(llm, embedder, reference)
+    meta = {"llm": llm, "embedder": embedder, "reference": reference}
+    result = {"segments": len(uts)}
+    for step in steps:
+        try:
+            out = step(seg_dicts, meta)
+            if isinstance(out, dict):
+                result.update(out)
+        except Exception as e:
+            print(f"[ingest] pipeline step {step.__name__}: {e}")
+    return result
 
 
 def scan_inbox() -> dict:

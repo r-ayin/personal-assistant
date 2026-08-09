@@ -48,7 +48,9 @@ class TestExtractJson:
 # ── LLM factory ───────────────────────────────────────────────────
 
 class TestLLMFactory:
-    def test_stub_default(self):
+    def test_stub_default(self, monkeypatch):
+        monkeypatch.setenv("PA_LLM_BACKEND", "stub")
+        config.CONFIG.update(config.load_config())
         llm = get_llm()
         assert isinstance(llm, StubLLM)
         assert isinstance(llm, LLMClient)
@@ -214,7 +216,9 @@ class TestHashingEmbedder:
 # ── ASR factory + StubTranscriber ─────────────────────────────────
 
 class TestASRFactory:
-    def test_stub_default(self):
+    def test_stub_default(self, monkeypatch):
+        monkeypatch.setenv("PA_ASR_BACKEND", "stub")
+        config.CONFIG.update(config.load_config())
         t = get_transcriber()
         assert isinstance(t, StubTranscriber)
         assert isinstance(t, Transcriber)

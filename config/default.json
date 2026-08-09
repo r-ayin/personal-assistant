@@ -52,6 +52,12 @@
       "thinking_effort": "off",
       "thinking_format": "anthropic"
     },
+    "minicpm_o": {
+      "model": "MiniCPM-o-4.5-Q4_K_M",
+      "max_tokens": 1024,
+      "thinking_effort": "off",
+      "thinking_format": "native"
+    },
     "stub": {}
   },
   "embedder": {
@@ -67,16 +73,22 @@
     "backend": "stub",
     "language": "zh",
     "faster_whisper": {
-      "model_size": "small",
+      "model_size": "medium",
       "device": "cuda",
       "compute_type": "float16",
-      "vad_filter": true
+      "vad_filter": true,
+      "beam_size": 5,
+      "best_of": 5,
+      "condition_on_previous_text": true
     },
     "stub": {}
   },
   "speaker": {
     "backend": "text",
-    "pyannote": {"hf_token_env": "HF_TOKEN"}
+    "pyannote": {
+      "hf_token_env": "HF_TOKEN",
+      "model": "pyannote/speaker-diarization-3.1"
+    }
   },
   "web": {
     "backend": "bing",
@@ -93,16 +105,54 @@
       "snippet_field": "content"
     }
   },
+  "local_omni": {
+    "enabled": false,
+    "model_root": "data/models/MiniCPM-o-4_5-gguf",
+    "worker_path": "data/runtime-package/resources/backend/runtime/jarvis-native-worker-cuda.exe",
+    "pipe_name": "\\\\.\\pipe\\PersonalAssistant.Omni.v1",
+    "verify_hashes": true,
+    "request_timeout_seconds": 600,
+    "perception_enabled": false,
+    "perception_interval_seconds": 1
+  },
   "distill": {
     "reflection_interval_hours": 24,
     "min_segments_for_distill": 5,
     "profile_path": "data/persona/profile.json"
   },
+  "memory": {
+    "dedup_enabled": true,
+    "l1_batch_max": 10,
+    "priority_drop_thresholds": {
+      "fact": 50, "event": 60, "emotion": 40,
+      "preference": 50, "intention": 50, "skill": 50
+    },
+    "scene_max": 15,
+    "scene_min_memories": 10,
+    "distill_every_n": 50,
+    "recall": {
+      "strategy": "hybrid",
+      "max_results": 5,
+      "score_threshold": 0.008,
+      "timeout_ms": 5000,
+      "max_chars_per_memory": 0,
+      "max_total_chars": 2000
+    }
+  },
   "proactive": {
     "check_interval_minutes": 30
+  },
+  "auth": {
+    "token_grace_days": 7
   },
   "storage": {
     "sqlite_path": "data/db/personal_assistant.db",
     "duckdb_path": "data/db/analytics.duckdb"
+  },
+  "chat": {
+    "max_conversations": 128,
+    "conversation_ttl_seconds": 3600,
+    "max_rounds": 8,
+    "max_history_chars": 12000
   }
 }
