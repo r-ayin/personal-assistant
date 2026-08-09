@@ -57,15 +57,26 @@ class PyannoteDiarizer(Diarizer):
         if self._pipe is None:
             from pyannote.audio import Pipeline  # lazy; 需 HF token
             import os
+            cfg = config.get("speaker.pyannote", {})
+            token_env = cfg.get("hf_token_env", "HF_TOKEN")
+            token = os.environ.get(token_env)
+            if not token:
+                raise RuntimeError(
+                    "PyannoteDiarizer requires HF token. Set config speaker.pyannote.hf_token_env "
+                    "or environment variable, or switch to speaker.backend='text'."
+                )
             self._pipe = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1",
-                                                  use_auth_token=os.environ.get("HF_TOKEN"))
-            self._embed = self._pipe.to_audio.embeddings if False else None
+                                                  use_auth_token=token)
 
     def attribute(self, utterances, audio_path=None):
         if not audio_path:
             # 无音频回落文字
             return TextDiarizer().attribute(utterances)
-        self._ensure()
+        try:
+            self._ensure()
+        except RuntimeError as e:
+            print(f"[speaker] pyannote unavailable: {e}; fallback to TextDiarizer")
+            return TextDiarizer().attribute(utterances)
         diar = self._pipe(audio_path)
         # 把 pyannote 的 turn 区间对齐到 utterance.start/end → 取该段 speaker label
         for u in utterances:

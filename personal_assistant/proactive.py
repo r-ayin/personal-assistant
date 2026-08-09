@@ -46,8 +46,11 @@ class CLINotifier:
         self.log_path = log_path or (config.ROOT / "data" / "logs" / "interventions.log")
 
     def notify(self, message: str, evidence: str, trigger_kind: str):
-        line = f"[{storage.now_iso()}] ({trigger_kind}) {message}  ← {evidence}"
-        print(f"\n🔔 主动干预: {line}")
+        line = f"[{storage.now_iso()}] ({trigger_kind}) {message}  <- {evidence}"
+        try:
+            print(f"\n[PROACTIVE] {line}")
+        except UnicodeEncodeError:
+            print(f"\n[PROACTIVE] {line.encode('ascii', errors='replace').decode('ascii')}")
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with self.log_path.open("a", encoding="utf-8") as f:
             f.write(line + "\n")
