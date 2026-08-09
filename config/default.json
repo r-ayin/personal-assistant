@@ -153,6 +153,7 @@
     "max_conversations": 128,
     "conversation_ttl_seconds": 3600,
     "max_rounds": 8,
-    "max_history_chars": 12000
+    "max_history_chars": 12000,
+    "web_search": "auto"
   }
 }
