@@ -118,6 +118,198 @@ def test_budget_clamps_below_max_tokens():
     assert b["thinking"]["budget_tokens"] == 3072   # min(24576, 4096-1024)
 
 
+# ── 详细结果、messages 与 provider usage 归一化 ───────────────────
+def test_llm_result_cache_hit_rate_is_serializable():
+    result = llm.LLMResult(text="ok", cache_hit_tokens=30, cache_miss_tokens=10)
+    assert result.cache_hit_rate == 0.75
+    encoded = json.loads(json.dumps(result.to_dict()))
+    assert encoded["cache_hit_rate"] == 0.75
+    assert encoded["text"] == "ok"
+
+
+def test_openai_detailed_sends_complete_messages_array():
+    captured = []
+
+    def fake_post(url, headers, body, timeout=60.0):
+        captured.append(body)
+        return {"id": "req-openai", "model": "served-model",
+                "choices": [{"message": {"content": "answer"}}]}
+
+    llm._post_json = fake_post
+    client = _new_openai("openai", "off")
+    messages = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "answer-1"},
+        {"role": "user", "content": "next"},
+    ]
+    result = client.chat_messages_detailed("sys", messages, temperature=0.6)
+
+    assert captured[0]["messages"] == [
+        {"role": "system", "content": "sys"}, *messages,
+    ]
+    assert captured[0]["temperature"] == 0.6
+    assert result.text == "answer"
+    assert result.request_id == "req-openai"
+    assert result.model == "served-model"
+    assert result.provider == "openai_compat"
+    assert result.latency_ms is not None and result.latency_ms >= 0
+
+
+def test_deepseek_usage_normalizes_explicit_cache_hit_and_miss():
+    def fake_post(url, headers, body, timeout=60.0):
+        return {
+            "id": "req-deepseek",
+            "choices": [{"message": {"content": "ok"}}],
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 20,
+                "total_tokens": 120,
+                "prompt_cache_hit_tokens": 75,
+                "prompt_cache_miss_tokens": 25,
+            },
+        }
+
+    llm._post_json = fake_post
+    result = llm.OpenAICompatLLM(
+        "http://x/v1", "k", "deepseek-chat", provider="deepseek"
+    ).chat_detailed("sys", "hello")
+
+    assert result.provider == "deepseek"
+    assert result.input_tokens == 100
+    assert result.output_tokens == 20
+    assert result.total_tokens == 120
+    assert result.cache_hit_tokens == 75
+    assert result.cache_miss_tokens == 25
+    assert result.cache_hit_rate == 0.75
+    assert result.cache_read_input_tokens is None
+    assert result.cache_write_input_tokens is None
+
+
+def test_openai_usage_normalizes_cached_tokens_without_estimating_miss():
+    def fake_post(url, headers, body, timeout=60.0):
+        return {
+            "choices": [{"message": {"content": "ok"}}],
+            "usage": {
+                "prompt_tokens": 80,
+                "completion_tokens": 8,
+                "prompt_tokens_details": {"cached_tokens": 60},
+            },
+        }
+
+    llm._post_json = fake_post
+    result = _new_openai("openai", "off").chat_detailed("sys", "hello")
+
+    assert result.input_tokens == 80
+    assert result.output_tokens == 8
+    assert result.total_tokens is None
+    assert result.cache_hit_tokens == 60
+    assert result.cache_miss_tokens is None
+    assert result.cache_hit_rate is None
+
+
+def test_anthropic_detailed_sends_messages_and_normalizes_cache_usage():
+    captured = []
+
+    def fake_post(url, headers, body, timeout=60.0):
+        captured.append(body)
+        return {
+            "id": "msg-1",
+            "model": "claude-served",
+            "content": [{"type": "text", "text": "hello"},
+                        {"type": "thinking", "thinking": "hidden"},
+                        {"type": "text", "text": " world"}],
+            "usage": {
+                "input_tokens": 40,
+                "output_tokens": 7,
+                "cache_read_input_tokens": 30,
+                "cache_creation_input_tokens": 10,
+            },
+        }
+
+    llm._post_json = fake_post
+    messages = [
+        {"role": "user", "content": "first"},
+        {"role": "assistant", "content": "answer"},
+        {"role": "user", "content": "next"},
+    ]
+    result = _new_anthropic("off").chat_messages_detailed("sys", messages)
+
+    assert captured[0]["system"] == "sys"
+    assert captured[0]["messages"] == messages
+    assert result.text == "hello world"
+    assert result.request_id == "msg-1"
+    assert result.model == "claude-served"
+    assert result.input_tokens == 40
+    assert result.output_tokens == 7
+    assert result.total_tokens is None
+    assert result.cache_read_input_tokens == 30
+    assert result.cache_write_input_tokens == 10
+    assert result.cache_hit_tokens is None
+    assert result.cache_miss_tokens is None
+    assert result.cache_hit_rate is None
+
+
+def test_unknown_usage_fields_remain_none():
+    def fake_post(url, headers, body, timeout=60.0):
+        return {"choices": [{"message": {"content": "ok"}}], "usage": {}}
+
+    llm._post_json = fake_post
+    result = _new_openai("openai", "off").chat_detailed("sys", "hello")
+    assert result.input_tokens is None
+    assert result.output_tokens is None
+    assert result.total_tokens is None
+    assert result.cache_hit_tokens is None
+    assert result.cache_miss_tokens is None
+
+
+def test_old_chat_contract_delegates_to_detailed_text():
+    def fake_post(url, headers, body, timeout=60.0):
+        return {"choices": [{"message": {"content": "legacy string"}}]}
+
+    llm._post_json = fake_post
+    result = _new_openai("openai", "off").chat("sys", "hello")
+    assert result == "legacy string"
+    assert isinstance(result, str)
+
+
+def test_base_detailed_fallback_and_message_history_capability():
+    class LegacyLLM(llm.LLMClient):
+        def chat(self, system, user, temperature=0.3):
+            return f"{system}|{user}|{temperature}"
+
+    result = LegacyLLM().chat_detailed("sys", "hello", temperature=0.4)
+    assert result.text == "sys|hello|0.4"
+    assert result.provider is None
+    assert result.input_tokens is None
+    assert result.latency_ms is not None
+
+    assert llm.LLMClient.supports_message_history is False
+    assert llm.StubLLM.supports_message_history is False
+    assert llm.MiniCPMOLLM.supports_message_history is False
+    assert llm.OpenAICompatLLM.supports_message_history is True
+    assert llm.AnthropicProxyLLM.supports_message_history is True
+
+
+def test_stub_and_minicpm_detailed_fallbacks_use_legacy_chat():
+    stub = llm.StubLLM()
+    stub_result = stub.chat_detailed("sys", "hello")
+    assert isinstance(stub_result, llm.LLMResult)
+    assert stub_result.text == stub.chat("sys", "hello")
+    assert stub_result.input_tokens is None
+
+    calls = []
+
+    def requester(method, payload):
+        calls.append((method, payload))
+        return {"text": "local answer"}
+
+    minicpm = llm.MiniCPMOLLM(requester=requester)
+    minicpm_result = minicpm.chat_detailed("sys", "hello")
+    assert minicpm_result.text == "local answer"
+    assert minicpm_result.provider is None
+    assert calls[0][0] == "ask"
+
+
 def run() -> bool:
     """函数式入口，供 cli test 或直接调用。"""
     tests = [v for k, v in sorted(globals().items())
