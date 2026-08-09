@@ -39,6 +39,9 @@ async def test_ws_live_connect():
         pytest.skip("websockets not installed")
 
     async with ws_connect(f"ws://127.0.0.1:{PA_PORT}/ws/live?token={TOKEN}") as ws:
+        # ws_manager 握手后先广播 hello，消费后再发 ping
+        hello = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+        assert hello.get("type") == "hello", f"expected hello, got {hello}"
         await ws.send(json.dumps({"type": "ping"}))
         resp = await asyncio.wait_for(ws.recv(), timeout=5)
         data = json.loads(resp)
