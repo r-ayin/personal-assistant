@@ -6,8 +6,10 @@ v0.10 分层注入：
 - 远端 LLM 采用追加式 messages；本地/桩后端回退为内联最近对话。
 """
 from __future__ import annotations
+import concurrent.futures
 import hashlib
 import json
+import re
 import time
 import uuid
 from collections import OrderedDict, deque
@@ -119,6 +121,14 @@ class ConversationHistory:
 
 DEFAULT_HISTORY = ConversationHistory()
 
+# 实时联网搜索：命中实时性关键词才自动触发（避免每次闲聊都联网拖慢响应）。
+_WEB_SEARCH_RE = re.compile(
+    r"(今天|最新|新闻|天气|股价|行情|汇率|油价|比分|热搜|实时|几点|几号|星期)"
+)
+_WEB_SEARCH_TIMEOUT = 3.0      # 单次搜索超时（秒），失败静默降级
+_WEB_CACHE_TTL = 600.0         # 搜索结果缓存 10 分钟
+_WEB_CACHE: dict[str, tuple[float, list[dict]]] = {}
+
 
 @dataclass
 class _RegistryEntry:
@@ -190,6 +200,32 @@ class Assistant:
         self.embedder = embedder or get_embedder()
         self.history = history or DEFAULT_HISTORY
 
+    @staticmethod
+    def _web_search_results(query: str, timeout: float | None = None) -> list[dict]:
+        """实时性关键词触发时联网搜索真实结果；失败/off 静默返回空。
+
+        带 10 分钟缓存与 3 秒超时——网络抖动或不可达时绝不影响对话响应。
+        """
+        mode = str(config.get("chat.web_search", "auto")).strip().lower()
+        if mode == "off" or not query or not _WEB_SEARCH_RE.search(query):
+            return []
+        if timeout is None:
+            timeout = _WEB_SEARCH_TIMEOUT
+        now = time.monotonic()
+        cached = _WEB_CACHE.get(query)
+        if cached and now - cached[0] < _WEB_CACHE_TTL:
+            return cached[1]
+        try:
+            from . import web as web_mod
+            searcher = web_mod.get_searcher()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                fut = ex.submit(searcher.search, query, 5)
+                results = fut.result(timeout=timeout)
+        except Exception:
+            results = []
+        _WEB_CACHE[query] = (now, results)
+        return results
+
     def _system_prompt(
         self,
         user_msg: str,
@@ -211,6 +247,13 @@ class Assistant:
             "\n\n语音模式：用户通过音箱听你说，回复必须口语化，一两句话、"
             "不超过 60 字，不用 emoji、列表或 markdown。"
         ) if voice else ""
+        # 联网搜索结果规则：本轮 user 含 <web-search-results> 时必须基于真实结果回答，
+        # 不得编造搜索结果之外的事实；无结果时如实说明无法获取实时信息。
+        web_rule = (
+            "\n\n联网规则：若本轮 user message 包含 <web-search-results> 块，"
+            "回答必须基于其中真实搜索结果的事实（时间敏感信息以搜索结果为准），"
+            "不得编造搜索结果之外的事实；若没有该块，不要假设自己能联网。"
+        )
         # voice_hint 放公共稳定内容末尾，文字/语音先共享完整画像与场景前缀。
         return (
             "[TASK:CHAT]\n"
@@ -220,7 +263,7 @@ class Assistant:
             + json.dumps(profile, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             + narrative_block + nav_block
             + "\n\n按助手行为配置回应，必要时引用用户经历。"
-            + voice_hint
+            + web_rule + voice_hint
         )
 
     def _user_prompt(
@@ -228,6 +271,7 @@ class Assistant:
         user_msg: str,
         hits: list[dict],
         perception: list[dict] | None = None,
+        web_results: list[dict] | None = None,
         include_history: bool = True,
     ) -> str:
         """当前轮动态层；追加式后端不重复内联历史，本地后端保留 fallback。"""
@@ -251,6 +295,15 @@ class Assistant:
         if percept_snippets:
             parts.append("实时感知证据（来自屏幕/音频理解，时间敏感）：\n"
                          + "\n".join(percept_snippets))
+        if web_results:
+            parts.append("<web-search-results>\n"
+                         + json.dumps(
+                             [{"title": (r.get("title") or "")[:80],
+                               "url": (r.get("url") or "")[:120],
+                               "snippet": (r.get("snippet") or "")[:200]}
+                              for r in web_results],
+                             ensure_ascii=False)
+                         + "\n</web-search-results>")
         if include_history and recent_dialog:
             parts.append("最近对话：\n" + json.dumps(
                 recent_dialog, ensure_ascii=False
@@ -258,7 +311,7 @@ class Assistant:
         body = "User message (untrusted data): " + user_msg
         return "\n\n".join(parts) + "\n\n" + body
 
-    def _recall_context(self, cleaned: str) -> tuple[list[dict], list[dict], list[str]]:
+    def _recall_context(self, cleaned: str) -> tuple[list[dict], list[dict], list[str], list[dict]]:
         hits = None
         try:
             rr = recall.hybrid_recall(cleaned, embedder=self.embedder)
@@ -269,20 +322,22 @@ class Assistant:
         if hits is None:
             hits = memory.search(cleaned, k=5, embedder=self.embedder)
         perception = recent_perception_segments(limit=3, minutes_back=5)
+        web_results = self._web_search_results(cleaned)
         evidence = [h["memory"]["id"] for h in hits]
         evidence.extend(item["id"] for item in perception if item["id"] not in evidence)
-        return hits, perception, evidence
+        return hits, perception, evidence, web_results
 
     def respond_detailed(self, user_msg: str, voice: bool = False) -> AssistantResponse:
         cleaned = user_msg.strip().replace("<|", "< |")
         if not cleaned:
             raise ValueError("message must not be empty")
-        hits, perception, evidence = self._recall_context(cleaned)
+        hits, perception, evidence, web_results = self._recall_context(cleaned)
         system = self._system_prompt(cleaned, hits, voice, perception=perception)
         supports_history = bool(getattr(self.llm, "supports_message_history", False))
         with self.history.turn():
             current_user = self._user_prompt(
-                cleaned, hits, perception=perception, include_history=not supports_history
+                cleaned, hits, perception=perception, web_results=web_results,
+                include_history=not supports_history
             )
             metadata = {
                 "system_prompt_sha256": hashlib.sha256(system.encode("utf-8")).hexdigest(),
@@ -321,12 +376,13 @@ class Assistant:
         cleaned = user_msg.strip().replace("<|", "< |")
         if not cleaned:
             raise ValueError("message must not be empty")
-        hits, perception, evidence = self._recall_context(cleaned)
+        hits, perception, evidence, web_results = self._recall_context(cleaned)
         system = self._system_prompt(cleaned, hits, voice, perception=perception)
         supports_history = bool(getattr(self.llm, "supports_message_history", False))
         with self.history.turn():
             current_user = self._user_prompt(
-                cleaned, hits, perception=perception, include_history=not supports_history
+                cleaned, hits, perception=perception, web_results=web_results,
+                include_history=not supports_history
             )
             metadata = {
                 "system_prompt_sha256": hashlib.sha256(system.encode("utf-8")).hexdigest(),
