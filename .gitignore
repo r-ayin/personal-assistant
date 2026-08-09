@@ -59,3 +59,7 @@ scripts/build-log.txt
 scripts/xiaozhi-esp32/managed_components/
 xiaozhi-dual-mode-firmware*/
 scripts/xiaozhi-esp32/**/.claude/
+
+# 本机启动/工具产物（含本机绝对路径，不入库）
+start-pa.bat
+update_file.json
