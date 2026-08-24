@@ -11,6 +11,23 @@ data/db/*
 data/logs/*
 data/inbox/*
 !data/**/.gitkeep
+data/models/
+data/runtime/
+data/runtime-package/
+data/downloads/
+data/memory/
+data/knowledge/
+
+# 运行日志
+backend.log
+
+# agent 工具本地状态/钩子（含本机硬编码路径，不入库）
+.claude/
+hooks/
+.audit/
+
+# 临时调试脚本
+_test_ws.py
 
 # persona profiles are generated; track a sample manually if desired
 data/persona/*
@@ -21,3 +38,28 @@ data/persona/*
 
 # opt-worktree 方向标记桩（运行态元数据，永不追踪；曾误入 HEADtracked-leak）
 .opt-direction
+
+# ESP32 本地构建产物（云编译走 GitHub Actions，本地 build/ 不入库；历史已跟踪文件待后续 untrack）
+scripts/xiaozhi-esp32/build/
+scripts/xiaozhi-esp32/sdkconfig
+scripts/xiaozhi-esp32/sdkconfig.local
+
+# Web 构建缓存与迁移遗留
+web/tsconfig.tsbuildinfo
+web/index.html.old
+web/package.json.old
+
+# esp-idf 配置备份（含可能过期的 token）
+scripts/xiaozhi-esp32/sdkconfig.old
+
+# v0.11 安全净化：本机 agent 状态与固件发布资产永不入库
+.zcode/
+.zcode/**/*
+scripts/build-log.txt
+scripts/xiaozhi-esp32/managed_components/
+xiaozhi-dual-mode-firmware*/
+scripts/xiaozhi-esp32/**/.claude/
+
+# 本机启动/工具产物（含本机绝对路径，不入库）
+start-pa.bat
+update_file.json

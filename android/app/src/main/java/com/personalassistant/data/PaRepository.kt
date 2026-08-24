@@ -19,7 +19,8 @@ class PaRepository(private val client: PaClient) {
     suspend fun segments(): Result<SegmentsOut> = runCatching { api().segments() }
     suspend fun memories(): Result<MemoriesOut> = runCatching { api().memories() }
     suspend fun profile(): Result<ProfileOut> = runCatching { api().profile() }
-    suspend fun chat(message: String): Result<ChatOut> = runCatching { api().chat(ChatIn(message)) }
+    suspend fun chat(message: String, conversationId: String? = null): Result<ChatOut> =
+        runCatching { api().chat(ChatIn(message, conversationId)) }
     suspend fun chatLog(): Result<ChatLogOut> = runCatching { api().chatLog() }
 
     /** /verify 返回 rep + assertion；提取 assertion 串 + 整 rep。 */

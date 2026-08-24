@@ -23,37 +23,77 @@ EV_INTERVENTION = "intervention"     # 主动干预 {kind, message, evidence, id
 EV_HEALTH = "health"                 # 健康快照
 EV_DEVICE = "device"                 # 设备状态
 EV_RECORD = "record"                 # "我帮你记下了X" {kind: event|reminder, title/what, when_dt, when_raw, ts}
+EV_LOCAL_MODEL_STATUS = "local_model_status"
+EV_PERCEPTION = "perception"
+EV_SCENE_CHANGED = "scene_changed"
+EV_ASSISTANT_MESSAGE = "assistant_message"
+EV_GAME_BARRAGE = "game_barrage"
+EV_COURSE_NOTE = "course_note"
+EV_SCREEN_IDLE = "screen_idle"
+EV_BARRAGE = "barrage"
+
+_ROLE_EVENT_TYPES = {
+    "overlay": {EV_BARRAGE, "barrage_settings", "hello"},
+}
+
+@dataclass(frozen=True)
+class ClientInfo:
+    role: str
+    version: int
+    connected_at: str
 
 
 @dataclass
 class ConnectionManager:
-    active: set[WebSocket] = field(default_factory=set)
+    _clients: dict[WebSocket, ClientInfo] = field(default_factory=dict)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _heartbeat_task: asyncio.Task | None = None
 
-    async def connect(self, ws: WebSocket) -> None:
+    @property
+    def active(self) -> set[WebSocket]:
+        return set(self._clients)
+
+    async def connect(self, ws: WebSocket, *, role: str = "page", version: int = 1) -> None:
+        from . import storage
+
         await ws.accept()
         async with self._lock:
-            self.active.add(ws)
-        log.info("ws connected: %s (total=%d)", ws.client, len(self.active))
+            self._clients[ws] = ClientInfo(
+                role=role, version=version, connected_at=storage.now_iso()
+            )
+        log.info("ws connected: %s role=%s (total=%d)", ws.client, role, len(self._clients))
 
     def disconnect(self, ws: WebSocket) -> None:
-        self.active.discard(ws)
-        log.info("ws disconnected (total=%d)", len(self.active))
+        self._clients.pop(ws, None)
+        log.info("ws disconnected (total=%d)", len(self._clients))
 
-    async def broadcast(self, event_type: str, payload: dict) -> int:
-        """广播事件到所有连接。返回成功投递数。失败的连接被清理。"""
-        from . import storage  # 延迟导入，避免循环
+    def presence(self) -> dict[str, int]:
+        counts = {"page": 0, "overlay": 0, "device": 0}
+        for info in self._clients.values():
+            counts[info.role] = counts.get(info.role, 0) + 1
+        return counts
+
+    async def broadcast(
+        self, event_type: str, payload: dict, roles: set[str] | None = None
+    ) -> int:
+        """Broadcast to selected roles, or every connected client when roles is None."""
+        from . import storage
+
         msg = json.dumps({
             "type": event_type,
             "data": payload,
             "ts": storage.now_iso(),
         }, ensure_ascii=False)
-        if not self.active:
+        recipients = [
+            ws for ws, info in list(self._clients.items())
+            if (roles is None or info.role in roles)
+            and event_type in _ROLE_EVENT_TYPES.get(info.role, {event_type})
+        ]
+        if not recipients:
             return 0
         dead: list[WebSocket] = []
         ok = 0
-        for ws in list(self.active):
+        for ws in recipients:
             try:
                 await ws.send_text(msg)
                 ok += 1
@@ -66,6 +106,9 @@ class ConnectionManager:
 
     async def send_to(self, ws: WebSocket, event_type: str, payload: dict) -> bool:
         """单连接投递（如回某条 chat 请求）。"""
+        info = self._clients.get(ws)
+        if info and event_type not in _ROLE_EVENT_TYPES.get(info.role, {event_type}):
+            return False
         from . import storage
         msg = json.dumps({"type": event_type, "data": payload, "ts": storage.now_iso()},
                          ensure_ascii=False)
@@ -86,7 +129,7 @@ class ConnectionManager:
             while True:
                 await asyncio.sleep(interval)
                 dead: list[WebSocket] = []
-                for ws in list(self.active):
+                for ws in list(self._clients):
                     try:
                         await ws.send_bytes(b"")  # 零字节探活；uvicorn 会发 pong
                     except Exception:
@@ -103,12 +146,12 @@ class ConnectionManager:
     async def shutdown(self) -> None:
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
-        for ws in list(self.active):
+        for ws in list(self._clients):
             try:
                 await ws.close()
             except Exception:
                 pass
-        self.active.clear()
+        self._clients.clear()
 
 
 # 单例

@@ -105,6 +105,22 @@ def retrieve(tag: str = "", query: str = "") -> list[dict]:
     return storage.wiki_search(tag=tag, query=query)
 
 
+def search(q: str = "") -> dict:
+    """api.py /wiki 用别名。"""
+    pages = storage.wiki_search(query=q) if q else storage.all_wiki_pages()
+    return {"pages": pages}
+
+
+def list_topics() -> list[dict]:
+    """返回标签云数据。"""
+    pages = storage.all_wiki_pages()
+    tags: dict[str, int] = {}
+    for p in pages:
+        for t in (p.get("tags") or []):
+            tags[t] = tags.get(t, 0) + 1
+    return [{"tag": k, "count": v} for k, v in sorted(tags.items(), key=lambda x: -x[1])]
+
+
 def assert_grounded() -> None:
     """断言：每个 wiki 页 source_ids 真实 + body 落地全部源。供测试/CLI。"""
     mems = storage.memories_all()

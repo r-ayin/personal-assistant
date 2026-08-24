@@ -15,6 +15,7 @@ class DtosSerializationTest {
     private val json = Json {
         ignoreUnknownKeys = true   // api.py 返回可能带额外字段，忽略不炸
         encodeDefaults = true
+        explicitNulls = false      // 与正式 Retrofit 配置一致，可选请求字段不发 null
     }
 
     @Test
@@ -34,6 +35,30 @@ class DtosSerializationTest {
         )
         assertEquals("ok", back.status)
         assertEquals("glm", back.llm)
+    }
+
+    @Test
+    fun `ChatIn 首次请求省略 conversation_id 后续请求回传`() {
+        val first = json.encodeToString(ChatIn.serializer(), ChatIn(message = "你好"))
+        val next = json.encodeToString(
+            ChatIn.serializer(),
+            ChatIn(message = "继续", conversation_id = "conversation-1")
+        )
+
+        assertFalse("首次请求不应发送 conversation_id", first.contains("conversation_id"))
+        assertTrue("后续请求必须回传 conversation_id", next.contains("\"conversation_id\":\"conversation-1\""))
+    }
+
+    @Test
+    fun `ChatOut 兼容旧响应并读取 conversation_id`() {
+        val legacy = json.decodeFromString(ChatOut.serializer(), """{"reply":"旧响应"}""")
+        val current = json.decodeFromString(
+            ChatOut.serializer(),
+            """{"reply":"新响应","conversation_id":"conversation-1"}"""
+        )
+
+        assertEquals(null, legacy.conversation_id)
+        assertEquals("conversation-1", current.conversation_id)
     }
 
     @Test

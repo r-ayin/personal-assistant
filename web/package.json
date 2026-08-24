@@ -1,9 +1,33 @@
 {
-  "name": "oneday-design",
-  "version": "1.0.0",
+  "name": "pa-web",
+  "version": "0.8.0",
   "private": true,
   "scripts": {
-    "build": "node /app/static/design-build.js",
-    "dev": "node /app/static/design-static-server.js 3015"
+    "dev": "next dev --port 3015",
+    "build": "next build",
+    "start": "next start --port 3015",
+    "lint": "next lint",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "next": "15.1.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "^25.0.1",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5",
+    "vitest": "^2.1.8"
   }
 }

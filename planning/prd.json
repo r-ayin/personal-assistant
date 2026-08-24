@@ -1,0 +1,551 @@
+{
+  "version": "1.0",
+  "source": "planning/prd.md",
+  "generatedAt": "2026-08-08",
+  "confirmation": "用户通过 /goal 指令授权完整 studio 循环（测试-修复直到完全无问题），PRD 决策见 planning/prd-decisions.md（40 条）",
+  "nodes": [
+    {
+      "id": "node-1",
+      "name": "Token 清理与环境变量化",
+      "tasks": [
+        {
+          "id": "N1-01",
+          "title": "清理 sdkconfig.defaults 硬编码 token",
+          "description": "scripts/xiaozhi-esp32/sdkconfig.defaults.esp32s3：删除 CONFIG_PC_TOKEN 与 CONFIG_PA_SERVER_TOKEN 两行，替换为注释说明 token 从本地 sdkconfig.local 覆盖。保留 IP/URL 配置。",
+          "acceptance": [
+            "git grep 旧 token 该文件零命中",
+            "注释说明清晰"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [],
+          "files": [
+            "scripts/xiaozhi-esp32/sdkconfig.defaults.esp32s3"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N1-02",
+          "title": "sdkconfig.local 本地 token 机制",
+          "description": "新建 scripts/xiaozhi-esp32/sdkconfig.local（含当前真 token 的 CONFIG_PC_TOKEN/CONFIG_PA_SERVER_TOKEN），.gitignore 追加该文件。",
+          "acceptance": [
+            "文件存在且含 token",
+            "git check-ignore 命中"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [],
+          "files": [
+            "scripts/xiaozhi-esp32/sdkconfig.local",
+            ".gitignore"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N1-03",
+          "title": "删除 sdkconfig.old",
+          "description": "git rm scripts/xiaozhi-esp32/sdkconfig.old（历史快照含 token）。",
+          "acceptance": [
+            "文件从索引与工作区移除"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [],
+          "files": [
+            "scripts/xiaozhi-esp32/sdkconfig.old"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N1-04",
+          "title": "test_ws.py 环境变量化",
+          "description": "tests/test_ws.py：TOKEN = os.environ.get('PA_API_TOKEN')，缺省 pytest.skip('需 PA_API_TOKEN')。",
+          "acceptance": [
+            "无 token 环境 pytest 该文件 skip 不 fail"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [],
+          "files": [
+            "tests/test_ws.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N1-05",
+          "title": "token 轮换",
+          "description": "secrets.token_hex(32) 生成新值，更新 .env 的 PA_API_TOKEN 与 sdkconfig.local。后端重启即生效（api_token() 已支持环境变量优先）。",
+          "acceptance": [
+            ".env 与 sdkconfig.local 均为新 token",
+            "旧 token 请求 401"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [
+            "N1-02"
+          ],
+          "files": [
+            ".env",
+            "scripts/xiaozhi-esp32/sdkconfig.local"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N1-06",
+          "title": "PA-TODO 记录历史清理可选项",
+          "description": "PA-TODO.md 追加 P3 项：git 历史 filter-repo 清理（可选，token 已轮换失效）+ 历史固件 bin 含失效 token 备注。",
+          "acceptance": [
+            "PA-TODO.md 含该条目"
+          ],
+          "priority": "P1",
+          "status": "done",
+          "blockedBy": [
+            "N1-05"
+          ],
+          "files": [
+            "PA-TODO.md"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        }
+      ]
+    },
+    {
+      "id": "node-2",
+      "name": "L1 原子记忆增强",
+      "tasks": [
+        {
+          "id": "N2-01",
+          "title": "memories 表迁移",
+          "description": "storage.py SCHEMA memories 表定义加 priority INTEGER DEFAULT 50 / scene_name TEXT DEFAULT '' / version INTEGER DEFAULT 0 / updated_at TEXT DEFAULT ''；connect() 增加 ALTER 迁移（参照 chat_log.evidence 迁移模式：PRAGMA table_info 检测缺列则 ALTER）。",
+          "acceptance": [
+            "新库建表含新列",
+            "旧库打开自动迁移",
+            "add_memory 可写 priority"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [],
+          "files": [
+            "personal_assistant/storage.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N2-02",
+          "title": "抽取 priority 增强",
+          "description": "memory.py SYSTEM_EXTRACT 增加 priority 字段要求（0-100 按类型分档）；extract() 解析 priority（缺失/非法修复为 50）；add() 落 priority 列并按 config memory.priority_drop_thresholds 过滤低分。",
+          "acceptance": [
+            "抽取结果带合法 priority",
+            "低分记忆被过滤"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [
+            "N2-01"
+          ],
+          "files": [
+            "personal_assistant/memory.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N2-03",
+          "title": "两阶段去重 dedup_and_store",
+          "description": "memory.py 新增 dedup_and_store(new_mems, embedder=None, llm=None) -> dict：阶段1 每条向量召回 top-5 候选；阶段2 llm.chat_json [TASK:DEDUP_MEMORIES] 批量判决 store/update/merge/skip；执行判决（update 改 target content+version+1+updated_at；merge 合并 content+priority 取高+10≤100+evidence 并集；skip 丢弃）；非法 action 降级 store；候选为空全部 store。返回计数 dict。config memory.dedup_enabled 默认 true。",
+          "acceptance": [
+            "四种判决路径各有单测覆盖",
+            "重复灌入不增行"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [
+            "N2-02"
+          ],
+          "files": [
+            "personal_assistant/memory.py",
+            "personal_assistant/storage.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N2-04",
+          "title": "ingest 接入去重",
+          "description": "ingest.py _memory_step 改调 memory.dedup_and_store（dedup_enabled 时），计数进 ingest 结果 dict（memories_dedup 键）。",
+          "acceptance": [
+            "ingest 结果含去重计数",
+            "dedup_enabled=false 时行为与旧版一致"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [
+            "N2-03"
+          ],
+          "files": [
+            "personal_assistant/ingest.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        }
+      ]
+    },
+    {
+      "id": "node-5",
+      "name": "混合召回（核心）",
+      "tasks": [
+        {
+          "id": "N5-01",
+          "title": "FTS5 索引",
+          "description": "storage.py：CREATE VIRTUAL TABLE memories_fts USING fts5(content, content_original UNINDEXED, mem_id UNINDEXED)；_tokenize_zh(text) 字符 bigram 空格连接（中文）+拉丁词保留；add_memory/delete_memory/update 同步维护；connect() 检测 memories 非空而 fts 空则全量重建。",
+          "acceptance": [
+            "中文查询 MATCH 命中",
+            "增删改后索引一致"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [
+            "N2-01"
+          ],
+          "files": [
+            "personal_assistant/storage.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N5-02",
+          "title": "recall.py 模块",
+          "description": "新模块 personal_assistant/recall.py：RecallResult dataclass（items/truncated/elapsed_ms/strategy）；bm25_search(query,k) FTS5 MATCH+bm25() 排序；vector_search 复用 storage.search_memories；rrf_fuse(lists,k=60) score=Σ1/(60+rank+1)；hybrid_recall(query,k=5,strategy='hybrid',embedder=None,budget=None) 候选 k*3→双路→RRF→阈值过滤→预算截断（score_threshold 0.008/timeout_ms 5000/max_total_chars 2000，time.monotonic 检查）；embedding 维度不匹配回落纯 BM25+告警。",
+          "acceptance": [
+            "RRF 双榜命中分>单榜",
+            "预算截断与超时路径正确"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [
+            "N5-01"
+          ],
+          "files": [
+            "personal_assistant/recall.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N5-03",
+          "title": "chat 分层注入",
+          "description": "chat.py respond() 改调 recall.hybrid_recall；L1 结果注入 user message 前缀 <relevant-memories>；system prompt 保持画像+场景导航（稳定层）；evidence 收集适配新返回结构（memory id 列表）。",
+          "acceptance": [
+            "chat evidence 非空",
+            "user 前缀含 relevant-memories 标签"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [
+            "N5-02"
+          ],
+          "files": [
+            "personal_assistant/chat.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N5-04",
+          "title": "API /memories/recall",
+          "description": "api.py 新增 GET /memories/recall?q=&k=5&strategy=hybrid（Bearer 鉴权，复用 _require_bearer），返回 RecallResult JSON（items 内 memory 脱敏为 id/kind/content/score）。",
+          "acceptance": [
+            "200 返回四项结构",
+            "401 无 token"
+          ],
+          "priority": "P1",
+          "status": "done",
+          "blockedBy": [
+            "N5-02"
+          ],
+          "files": [
+            "personal_assistant/api.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        }
+      ]
+    },
+    {
+      "id": "node-3",
+      "name": "L2 场景层",
+      "tasks": [
+        {
+          "id": "N3-01",
+          "title": "scenes 表与存取",
+          "description": "storage.py：scenes 表（id/name/summary/body/heat INTEGER DEFAULT 1/source_mem_ids TEXT DEFAULT '[]'/created_at/updated_at）；函数 scenes_all()/scene_get(id)/scene_upsert(s)/scene_delete(id)。",
+          "acceptance": [
+            "CRUD 单测通过"
+          ],
+          "priority": "P1",
+          "status": "done",
+          "blockedBy": [
+            "N2-01"
+          ],
+          "files": [
+            "personal_assistant/storage.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N3-02",
+          "title": "scenes.py 整合引擎",
+          "description": "新模块 personal_assistant/scenes.py：integrate(new_mem_ids=None, llm=None) -> dict；读现有场景+新记忆→llm.chat_json [TASK:SCENE_INTEGRATE] 操作列表→执行 UPDATE/MERGE/CREATE（容量≥scene_max 强制 MERGE；heat 新建1/更新+1/合并sum+1；source_mem_ids 全部须存在否则丢弃操作；body≤1500 截断）。返回 {created,updated,merged,scenes_total}。",
+          "acceptance": [
+            "策略优先级正确",
+            "溯源校验生效",
+            "容量控制生效"
+          ],
+          "priority": "P1",
+          "status": "done",
+          "blockedBy": [
+            "N3-01",
+            "N2-03"
+          ],
+          "files": [
+            "personal_assistant/scenes.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N3-03",
+          "title": "触发接入",
+          "description": "ingest.py 新增 _scene_step（verify 前，新增记忆≥scene_min_memories 时触发）；distill.run() 前自动 scenes.integrate()。",
+          "acceptance": [
+            "灌≥10条记忆后 scenes 非空"
+          ],
+          "priority": "P1",
+          "status": "done",
+          "blockedBy": [
+            "N3-02"
+          ],
+          "files": [
+            "personal_assistant/ingest.py",
+            "personal_assistant/distill.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        }
+      ]
+    },
+    {
+      "id": "node-4",
+      "name": "L3 Persona 融合",
+      "tasks": [
+        {
+          "id": "N4-01",
+          "title": "narrative 列",
+          "description": "storage.py persona_versions 加 narrative TEXT DEFAULT ''（ALTER 迁移）；save_persona_version(profile, change_summary, narrative='') 向后兼容；latest_persona 返回含 narrative。",
+          "acceptance": [
+            "旧库迁移正常",
+            "save/read 含 narrative"
+          ],
+          "priority": "P1",
+          "status": "done",
+          "blockedBy": [
+            "N2-01"
+          ],
+          "files": [
+            "personal_assistant/storage.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N4-02",
+          "title": "narrative 生成",
+          "description": "distill.py run() 完成档案后追加 [TASK:NARRATIVE] 调用：输入 9 维档案+场景导航（+旧 narrative 增量），输出≤2000 字符叙事体（超长截断），随版本入库。",
+          "acceptance": [
+            "distill 后 narrative 非空≤2000"
+          ],
+          "priority": "P1",
+          "status": "done",
+          "blockedBy": [
+            "N4-01",
+            "N3-02"
+          ],
+          "files": [
+            "personal_assistant/distill.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N4-03",
+          "title": "distill --auto 阈值",
+          "description": "cli.py distill 增加 --auto flag：未处理记忆数≥memory.distill_every_n(50) 才执行，否则打印 skip。",
+          "acceptance": [
+            "阈值判断正确"
+          ],
+          "priority": "P2",
+          "status": "done",
+          "blockedBy": [
+            "N4-02"
+          ],
+          "files": [
+            "personal_assistant/cli.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N4-04",
+          "title": "场景导航注入 chat",
+          "description": "chat.py _system_prompt 注入场景导航（scenes_all 按 heat 降序，格式 🔥 名称 — summary，heat≥50 加火焰），置于用户画像后；narrative 替代或补充原 profile JSON 注入（narrative 优先，无则回落 JSON）。",
+          "acceptance": [
+            "system prompt 含场景导航段"
+          ],
+          "priority": "P1",
+          "status": "done",
+          "blockedBy": [
+            "N4-02",
+            "N5-03"
+          ],
+          "files": [
+            "personal_assistant/chat.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        }
+      ]
+    },
+    {
+      "id": "node-6",
+      "name": "配置与 CLI",
+      "tasks": [
+        {
+          "id": "N6-01",
+          "title": "config memory 块",
+          "description": "config/default.json 新增 memory 块：dedup_enabled/l1_batch_max/priority_drop_thresholds/scene_max/scene_min_memories/distill_every_n/recall{strategy,max_results,score_threshold,timeout_ms,max_total_chars}。",
+          "acceptance": [
+            "config.get('memory.recall.max_results')==5"
+          ],
+          "priority": "P1",
+          "status": "done",
+          "blockedBy": [],
+          "files": [
+            "config/default.json"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N6-02",
+          "title": "cli memory 子命令",
+          "description": "cli.py 新增 memory 子命令：status（memories/scenes/persona 计数+最近更新）/recall <query> [--k --strategy]/scenes（name/heat/updated 列表）。",
+          "acceptance": [
+            "三子命令 stub 环境可运行"
+          ],
+          "priority": "P1",
+          "status": "done",
+          "blockedBy": [
+            "N5-02",
+            "N3-01"
+          ],
+          "files": [
+            "personal_assistant/cli.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N6-03",
+          "title": "StubLLM 三分支",
+          "description": "llm.py StubLLM 新增 [TASK:DEDUP_MEMORIES]（相同→skip/bigram重叠>0.6同kind→merge/否则store）、[TASK:SCENE_INTEGRATE]（按 kind 聚合三固定场景+容量 MERGE）、[TASK:NARRATIVE]（从档案确定性拼装）确定性分支。",
+          "acceptance": [
+            "三分支 stub 全链路可测"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [],
+          "files": [
+            "personal_assistant/llm.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        }
+      ]
+    },
+    {
+      "id": "node-7",
+      "name": "测试与验收",
+      "tasks": [
+        {
+          "id": "N7-01",
+          "title": "新增单测",
+          "description": "tests/test_recall.py（RRF 数学/BM25 中文/预算截断/超时/strategy）、tests/test_scenes.py（策略/heat/容量/溯源）、tests/test_l1_dedup.py（四判决/priority合并/旧库迁移）。",
+          "acceptance": [
+            "三文件全绿"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [
+            "N2-03",
+            "N3-02",
+            "N5-02"
+          ],
+          "files": [
+            "tests/test_recall.py",
+            "tests/test_scenes.py",
+            "tests/test_l1_dedup.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N7-02",
+          "title": "e2e 扩展",
+          "description": "test_e2e.py 扩展：灌转录→L1去重→场景整合→distill+narrative→hybrid_recall→chat 引用全链路断言。",
+          "acceptance": [
+            "e2e 通过"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [
+            "N7-01",
+            "N4-04"
+          ],
+          "files": [
+            "tests/test_e2e.py"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        },
+        {
+          "id": "N7-03",
+          "title": "修复循环至零失败",
+          "description": "红→修→绿循环直到 pytest tests/ --tb=short 零失败（原 102 + 新增全绿）；每轮记录 planning/test-log.md。",
+          "acceptance": [
+            "全量零失败",
+            "test-log.md 记录完整"
+          ],
+          "priority": "P0",
+          "status": "done",
+          "blockedBy": [
+            "N7-02"
+          ],
+          "files": [
+            "planning/test-log.md"
+          ],
+          "completedAt": "2026-08-08",
+          "blocked": false
+        }
+      ]
+    }
+  ]
+}

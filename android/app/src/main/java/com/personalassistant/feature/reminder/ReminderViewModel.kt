@@ -13,7 +13,8 @@ import javax.inject.Inject
 
 data class ReminderUiState(
     val reminders: List<Reminder> = emptyList(),
-    val fired: List<String> = emptyList(),
+    val fired: Int = 0,
+    val firedItems: List<Reminder> = emptyList(),
     val checking: Boolean = false,
     val loading: Boolean = false,
     val error: String? = null,
@@ -38,7 +39,7 @@ class ReminderViewModel @Inject constructor(
     fun check() = viewModelScope.launch {
         _ui.update { it.copy(checking = true) }
         repo.remindersCheck()
-            .onSuccess { d -> _ui.update { it.copy(checking = false, fired = d.fired) } }
+            .onSuccess { d -> _ui.update { it.copy(checking = false, fired = d.fired, firedItems = d.items) } }
             .onFailure { e -> _ui.update { it.copy(checking = false, error = e.message) } }
     }
 }

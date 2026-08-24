@@ -54,10 +54,16 @@ data class ProfileOut(
 )
 
 @Serializable
-data class ChatIn(val message: String)
+data class ChatIn(
+    val message: String,
+    val conversation_id: String? = null,
+)
 
 @Serializable
-data class ChatOut(val reply: String = "")
+data class ChatOut(
+    val reply: String = "",
+    val conversation_id: String? = null,
+)
 
 @Serializable
 data class ChatLogEntry(val role: String? = null, val content: String? = null, val created_at: String? = null)
@@ -109,7 +115,7 @@ data class Reminder(
 data class RemindersOut(val reminders: List<Reminder> = emptyList())
 
 @Serializable
-data class RemindersCheckOut(val fired: List<String> = emptyList())
+data class RemindersCheckOut(val fired: Int = 0, val items: List<Reminder> = emptyList())
 
 @Serializable
 data class Speaker(val name: String? = null, val label: String? = null, val note: String? = null, val created_at: String? = null)

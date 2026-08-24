@@ -70,3 +70,10 @@ def search(query: str, llm=None) -> list[dict]:
     if s and e:
         return storage.events_range(s, e)
     return storage.events_search(query)
+
+
+def get_events(day: str = ""):
+    """api.py /events 用别名。"""
+    if not day:
+        return storage.all_events()
+    return storage.events_search(day)

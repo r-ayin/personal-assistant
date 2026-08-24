@@ -3,20 +3,26 @@
   "displayName": "全自动个人助手",
   "currentStage": "development",
   "locked": false,
-  "lockedReason": "用户直导式构建（2026-06-28）+ 后台自治循环在跑(qwen3.7-max, 2026-06-29 12:20 重启); 安卓App设计已 triage 入管线(.pipeline/current.json kind=complex stage=prd)",
-  "version": "0.5.0",
-  "mvpStatus": "v0.1 深核 + v0.2 说话人/日历/提醒/反幻觉/真实时间 + v0.3 推荐联网搜索 + v0.4 个人wiki + v0.5 LLM 可配(5旋钮+思考程度档位+全局覆盖+cli llm+3新端点) 均端到端跑通（stub + 真 GLM-5.2 会话代理）",
-  "v04Feature": "个人wiki:记忆→自动切片+LLM分类打标+编译互链主题页(title/body/tags/source_ids/links);反幻觉(source_ids真实+body落地源);按标签/词检索",
-  "v05Feature": "LLM 可配: model/context_window/max_tokens/thinking_effort(off·低·中·高)/base_url/api_key;全局覆盖层(config.set_override+env+llm.*默认);思考程度→provider原生字段(GLM开/关·GLM-anthropic budget·OpenAI reasoning_effort+max_completion_tokens·Qwen enable_thinking+thinking_budget·Anthropic thinking.budget_tokens);新增 glm_anthropic 后端;cli llm;GET/POST /settings/llm + POST /inbox/upload;前端设计文档 planning/frontend-design.md",
-  "v06Design": "安卓App设计方案完成 planning/android-app-design.md(8章:架构/设计系统/逐屏11屏/前台录音隐私/导航数据层/端点映射总表/风险/落地路径);对齐后端v0.5 21端点+反幻觉可见+诚实配置;已triage为complex/stage=prd,待dev阶段实现",
-  "decisions": {
-    "llm": "pluggable: local Ollama default + cloud GLM-5.2 (dev 会话代理可用); 5旋钮可配+思考程度档位(按官方文档映射4家provider)",
-    "hardware": "user has GPU box (dev box has none)",
-    "audio": "设备自带转录(无时间戳);inbox watch-dir;时间戳=收文记录时间(time_kind=received)",
-    "web": "Bing(默认,免key) + 可切 ApiWebSearcher(用户配搜索API,tavily/generic)",
-    "mvp": "core deep + 说话人/日历/提醒/反幻觉/推荐/wiki/LLM可配 (achieved)"
+  "version": "0.11.0",
+  "lastUpdated": "2026-08-11T00:00:00+08:00",
+  "taskType": "new-feature",
+  "taskName": "安全 Git 同步 + 实时语音应答增强",
+  "completedStages": [
+    "requirements",
+    "prd"
+  ],
+  "notes": "v0.11 实时语音应答增强（实体回归中）：turn 状态机+generation guard 可取消、VAD 自适应噪声基线+宽容积分+8s 满帧保险、固件自定义唤醒词「江江」(MultiNet6) 与 Wi-Fi PSM 关停已刷写 ota_0；语音提速：xiaozhi 通道 LLM max_tokens=160 限长 + ASR small/beam=1（服务 8004 已重启上线，small 3.7s 预热）。安全 Git 同步主线：净化分支按计划推进，本机脏历史不推公开仓库。",
+  "activeWork": [
+    "真机复测分段时延：EOU→STT p95≤2s、STT→首Opus p95≤4s",
+    "噪声环境 VAD 结尾切段收尾（观察 8s 保险效果后决定是否收紧静音判定）",
+    "Type-C 音频输出方案评估：外接 I2S DAC/功放（零代码） vs 固件新增 USB UAC device"
+  ],
+  "verification": {
+    "contracts": "tests/test_xiaozhi_session.py 12/12；真机分段时延（asr_ms/llm_ms/tts_ms）待复测",
+    "regression": "stub 全链路回归基线 268 passed / 3 skipped（v0.10 历史基线 224）",
+    "fixLoop": "LLM AssistantResponse 解包修复；VAD 15s 满帧空 ASR（噪声环境）→ 满帧保险降至 8s"
   },
-  "deferred": ["Web panel 实现(设计文档已完成 planning/frontend-design.md)", "pyannote real voiceprint", "faster-whisper real model", "persona LoRA"],
-  "activeWork": ["Android app: 设计稿完成(planning/android-app-design.md), 管线 stage=prd, 待 dev 阶段实现 Kotlin+Compose 工程"],
-  "lastUpdated": "2026-06-29"
+  "engine": {
+    "lastEngineAction": "2026-08-07T17:55:59Z"
+  }
 }

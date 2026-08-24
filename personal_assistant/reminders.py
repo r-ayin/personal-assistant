@@ -29,10 +29,6 @@ def _resolve(expr, reference, llm=None, recurring=""):
     return ""
 
 
-def calendar_resolve_prompt():
-    """已弃用 LLM 日期兜底（反幻觉）。保留占位避免引用断裂。"""
-    return "[deprecated] 日期解析走确定性 temporal.resolve"
-
 
 def _next_occurrence(expr, reference, recurring):
     """循环提醒：粗略算下次发生。每天→明天同时辰;每周→下周同日;每月→下月同日。"""
@@ -90,17 +86,17 @@ class ReminderScheduler:
         self.notifier = notifier or _Notify()
         self._stop = False
 
-    def check_due(self) -> int:
+    def check_due(self) -> list[dict]:
         now = datetime.now().isoformat(timespec="minutes")
         due = storage.reminders_due(now)
         for r in due:
-            self.notifier.notify(f"⏰ 提醒：{r['what']}（{r.get('when_raw','')}）", r["id"])
+            self.notifier.notify(f"提醒: {r['what']} ({r.get('when_raw','')})", r["id"])
             if r.get("recurring"):
                 # 重排下一次
                 nxt = _next_occurrence(r.get("when_raw", ""), datetime.now(), r["recurring"])
                 storage.add_reminder({**r, "when_dt": nxt, "id": r["id"] + "-next"})
             storage.mark_reminder_fired(r["id"])
-        return len(due)
+        return due
 
     def run_loop(self, poll_seconds: float = 30.0):
         while not self._stop:
@@ -114,10 +110,23 @@ class ReminderScheduler:
         self._stop = True
 
 
+def check_due() -> list[dict]:
+    """模块级便捷入口，供 api.py patrol 调用。"""
+    return ReminderScheduler().check_due()
+
+
+def list_all() -> list[dict]:
+    """api.py 用别名。"""
+    return storage.reminders_all()
+
+
 class _Notify:
     def notify(self, message, evidence):
-        line = f"[{storage.now_iso()}] {message}  ← {evidence}"
-        print(f"\n🔔 {line}")
+        line = f"[{storage.now_iso()}] {message}  <- {evidence}"
+        try:
+            print(f"\n[DING] {line}")
+        except UnicodeEncodeError:
+            print(f"\n[DING] {line.encode('ascii', errors='replace').decode('ascii')}")
         log = config.ROOT / "data" / "logs" / "reminders.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         with log.open("a", encoding="utf-8") as f:

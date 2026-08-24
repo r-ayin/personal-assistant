@@ -2,7 +2,11 @@
 from __future__ import annotations
 import argparse
 import json
+import logging
 import sys
+import os
+import urllib.error
+import urllib.request
 
 from . import (config, storage, asr, memory, distill, proactive, chat,
                ingest, calendar, reminders, speaker, verify, recommend, wiki)
@@ -32,8 +36,8 @@ def cmd_chat(args):
         if not msg:
             break
         storage.add_chat_log("user", msg)            # 真实系统时间戳
-        reply = a.respond(msg)
-        storage.add_chat_log("assistant", reply)
+        reply, evidence = a.respond(msg)
+        storage.add_chat_log("assistant", reply, evidence=evidence)
         print("🤖", reply)
 
 
@@ -118,9 +122,117 @@ def cmd_status(args):
         print(f"profile: {json.dumps(p, ensure_ascii=False)[:300]}")
 
 
+def cmd_memory(args):
+    """v0.10 记忆架构调试入口：status / recall / scenes。"""
+    from . import recall as recall_mod, scenes
+    if args.action == "status":
+        with storage.connect() as c:
+            nmem = c.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+            nsc = c.execute("SELECT COUNT(*) FROM scenes").fetchone()[0]
+            nseg = c.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
+        _p, _s, pv = storage.latest_persona()
+        narr = storage.latest_narrative()
+        print(f"L0 segments:{nseg} | L1 memories:{nmem} | L2 scenes:{nsc} | "
+              f"L3 persona_v:{pv} narrative:{len(narr)}字符")
+        print(f"场景待整合记忆: {scenes.pending_count()}")
+    elif args.action == "recall":
+        rr = recall_mod.hybrid_recall(args.query, k=args.k, strategy=args.strategy)
+        print(f"[{rr.strategy}] {len(rr.items)} hits, {rr.elapsed_ms:.0f}ms"
+              + (", truncated" if rr.truncated else ""))
+        for it in rr.items:
+            m = it["memory"]
+            print(f"  {it['score']:.4f} [{'+'.join(it['sources'])}] "
+                  f"({m.get('kind')}, p{m.get('priority', 50)}) {m.get('content', '')[:80]}")
+    elif args.action == "scenes":
+        for s in storage.scenes_all():
+            print(f"  heat:{s['heat']:<4} {s['name']} — {s['summary'][:50]} "
+                  f"(src:{len(s['source_mem_ids'])}, {s['updated_at'][:19]})")
+    elif args.action == "integrate":
+        r = scenes.integrate()
+        print(f"scene integrate: {r}")
+
+
+def cmd_token(args):
+    """v0.10 token 宽限轮换：rotate / list / revoke。
+
+    轮换后旧 token 在宽限期（默认 7 天）内仍有效——设备不必重新烧录，
+    过渡期内重配 NVS/重新编译即可；revoke 可提前吊销。"""
+    from . import auth
+    from . import config as _cfg
+    if args.action == "list":
+        info = auth.list_tokens()
+        print(f"当前 token: {info['current']}  (鉴权{'开启' if info['auth_enabled'] else '关闭'})")
+        if info["retired"]:
+            print("宽限期内的退役 token:")
+            for e in info["retired"]:
+                print(f"  {e['prefix']}...  退役于 {e['retired_at']}  宽限 {e['grace_days']} 天")
+        else:
+            print("无退役 token")
+    elif args.action == "rotate":
+        old = _cfg.api_token()
+        if not old:
+            print("当前未配置 PA_API_TOKEN（鉴权关闭），直接生成新 token 写入 .env")
+        new = auth.generate_token()
+        if old:
+            auth.retire_token(old, grace_days=args.grace_days)
+        env_path = _cfg.ROOT / ".env"
+        lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+        replaced = False
+        for i, ln in enumerate(lines):
+            if ln.strip().startswith("PA_API_TOKEN="):
+                lines[i] = f"PA_API_TOKEN={new}"
+                replaced = True
+        if not replaced:
+            lines.append(f"PA_API_TOKEN={new}")
+        env_path.write_text(chr(10).join(lines) + chr(10), encoding="utf-8")
+        local_cfg = _cfg.ROOT / "scripts" / "xiaozhi-esp32" / "sdkconfig.local"
+        if local_cfg.exists():
+            txt = local_cfg.read_text(encoding="utf-8")
+            if old:
+                txt = txt.replace('CONFIG_PC_TOKEN="' + old + '"',
+                                  'CONFIG_PC_TOKEN="' + new + '"')
+                txt = txt.replace('CONFIG_PA_SERVER_TOKEN="' + old + '"',
+                                  'CONFIG_PA_SERVER_TOKEN="' + new + '"')
+            local_cfg.write_text(txt, encoding="utf-8")
+        print(f"新 token: {new}")
+        if old:
+            gd = args.grace_days if args.grace_days is not None else _cfg.get("auth.token_grace_days", 7)
+            print(f"旧 token 已登记退役，宽限 {gd} 天内设备可继续连接（免烧录过渡）")
+        print("后续：1) 重启后端生效  2) 设备在宽限期内随时重配 NVS 或重新编译  "
+              "3) 过渡完成可 `cli token revoke --all` 立即失效旧 token")
+    elif args.action == "revoke":
+        n = auth.revoke_token(prefix=args.prefix or "", all_tokens=args.all)
+        print(f"已吊销 {n} 个退役 token")
+
+
 def cmd_serve(args):
     import uvicorn
-    uvicorn.run("personal_assistant.api:app", host=args.host, port=args.port, reload=False)
+    from . import desktop_connection
+    from pathlib import Path
+    # 显式配置 root logger：同时写 stderr + 文件 backend.log
+    # 文件 handler 避免 PowerShell 管道缓冲 stderr 导致 pa.xiaozhi 日志不可见
+    log_path = Path("backend.log")
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    # 清掉残留 handler（避免 uvicorn 重复加）
+    for h in list(root.handlers):
+        root.removeHandler(h)
+    fh = logging.FileHandler(log_path, mode="a", encoding="utf-8")
+    fh.setFormatter(fmt)
+    fh.setLevel(logging.INFO)
+    root.addHandler(fh)
+    sh = logging.StreamHandler(sys.stderr)
+    sh.setFormatter(fmt)
+    sh.setLevel(logging.INFO)
+    root.addHandler(sh)
+    desktop_connection.publish_for_server(
+        host=args.host,
+        port=args.port,
+        token=config.api_token(),
+    )
+    uvicorn.run("personal_assistant.api:app", host=args.host, port=args.port, reload=False,
+                log_level="info")
 
 
 def cmd_llm(args):
@@ -157,6 +269,57 @@ def cmd_habits(args):
         print(f"  {s['speaker']:12s}  segs={s['segments']}  chars={s['total_chars']}  avg={s['avg_chars']}  days={s['active_days']}")
 
 
+def cmd_local_model(args):
+    from . import local_omni
+    from .omni_service import get_omni_service
+    if args.action == "download":
+        endpoint = local_omni.download_models()
+        print(json.dumps({"downloaded": True, "endpoint": endpoint,
+                          "model_root": str(local_omni.resolve_model_root()),
+                          "bytes": local_omni.MODEL_TOTAL_BYTES},
+                         ensure_ascii=False, indent=2))
+        return
+    model_root = local_omni.resolve_model_root()
+    worker_path = local_omni.resolve_worker_path()
+    print(json.dumps({
+        **get_omni_service().status(),
+        "worker_path": str(worker_path),
+        "worker_exists": worker_path.is_file(),
+        "model_root": str(model_root),
+        "model_files_valid": local_omni.model_files_are_valid(model_root, verify_hashes=False),
+        "model_marker_valid": local_omni.model_marker_is_valid(model_root),
+        "model_revision": local_omni.MODEL_REVISION,
+        "model_bytes": local_omni.MODEL_TOTAL_BYTES,
+    }, ensure_ascii=False, indent=2))
+
+
+def cmd_perception(args):
+    """通过已运行的 PA API 启停本地多模态感知。"""
+    base_url = (args.base_url or os.environ.get("PA_API_URL")
+                or "http://127.0.0.1:8004").rstrip("/")
+    token = args.token or config.api_token()
+    if not token:
+        raise SystemExit("perception control requires --token or PA_API_TOKEN")
+    request = urllib.request.Request(
+        f"{base_url}/perception/{args.action}",
+        data=b"",
+        headers={"Authorization": f"Bearer {token}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = json.loads(exc.read().decode("utf-8")).get("detail", str(exc))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            detail = str(exc)
+        raise SystemExit(f"PA API returned HTTP {exc.code}: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise SystemExit(f"PA API unavailable at {base_url}: {exc.reason}") from exc
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def cmd_test(args):
     from tests.test_e2e import run
     sys.exit(0 if run() else 1)
@@ -178,8 +341,19 @@ def main(argv=None):
     w = sub.add_parser("wiki"); w.add_argument("action", choices=["build","list","search"]); w.add_argument("q", nargs="?"); w.set_defaults(func=cmd_wiki)
     sub.add_parser("status").set_defaults(func=cmd_status)
     sub.add_parser("habits").set_defaults(func=cmd_habits)
+    m = sub.add_parser("memory"); m.add_argument("action", choices=["status","recall","scenes","integrate"]); m.add_argument("query", nargs="?"); m.add_argument("--k", type=int, default=5); m.add_argument("--strategy", default=None); m.set_defaults(func=cmd_memory)
+    t = sub.add_parser("token"); t.add_argument("action", choices=["rotate","list","revoke"]); t.add_argument("--grace-days", type=float, default=None); t.add_argument("--prefix", default=""); t.add_argument("--all", action="store_true"); t.set_defaults(func=cmd_token)
     sub.add_parser("llm").set_defaults(func=cmd_llm)
-    s = sub.add_parser("serve"); s.add_argument("--host", default="0.0.0.0"); s.add_argument("--port", type=int, default=8000); s.set_defaults(func=cmd_serve)
+    s = sub.add_parser("serve"); s.add_argument("--host", default="0.0.0.0"); s.add_argument("--port", type=int, default=8004); s.set_defaults(func=cmd_serve)
+    lm = sub.add_parser("local-model")
+    lm.add_argument("action", nargs="?", default="status",
+                    choices=["status", "download"])
+    lm.set_defaults(func=cmd_local_model)
+    perception = sub.add_parser("perception")
+    perception.add_argument("action", choices=["start", "stop"])
+    perception.add_argument("--base-url")
+    perception.add_argument("--token")
+    perception.set_defaults(func=cmd_perception)
     sub.add_parser("test").set_defaults(func=cmd_test)
 
     args = ap.parse_args(argv)

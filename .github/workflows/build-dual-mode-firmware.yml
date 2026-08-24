@@ -10,7 +10,7 @@ on:
       pc_port:
         description: 'PC WebSocket port'
         required: false
-        default: '8000'
+        default: '8004'
 
 jobs:
   build:
@@ -37,6 +37,9 @@ jobs:
           echo "CONFIG_BG_AUDIO_ENABLE=y" >> sdkconfig.defaults
           echo 'CONFIG_PC_IP="${{ github.event.inputs.pc_ip }}"' >> sdkconfig.defaults
           echo "CONFIG_PC_PORT=${{ github.event.inputs.pc_port }}" >> sdkconfig.defaults
+          # Token 走 GitHub Secrets，不入库；未配置时留空（设备端 NVS 可后配）
+          echo 'CONFIG_PC_TOKEN="${{ secrets.PA_WS_TOKEN }}"' >> sdkconfig.defaults
+          echo 'CONFIG_PA_SERVER_TOKEN="${{ secrets.PA_WS_TOKEN }}"' >> sdkconfig.defaults
           cat sdkconfig.defaults.esp32s3 >> sdkconfig.defaults
 
       - name: Build firmware

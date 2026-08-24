@@ -170,7 +170,11 @@ void Application::Initialize() {
     if (pc_ip && strlen(pc_ip) > 0) {
         snprintf(bg_pc_ip_, sizeof(bg_pc_ip_), "%s", pc_ip);
         bg_port_ = pc_port;
-        const char *token = ""; // Token could be loaded from NVS/Kconfig if needed
+        // v0.10.1 NVS 优先：token 已由 OTA/配网写入 NVS(websocket:token) 则用 NVS 值，
+        // 空才回落 Kconfig——换 token 无需重新编译，改 NVS 即可
+        Settings ws_read("websocket", false);
+        std::string ws_token = ws_read.GetString("token", CONFIG_PA_SERVER_TOKEN);
+        const char *token = ws_token.c_str();
         if (bg_init(pc_ip, pc_port, token) == 0) {
             bg_inited_ = true;
             ESP_LOGI(TAG, "Background audio collection initialized -> %s:%d", pc_ip, pc_port);
@@ -496,7 +500,18 @@ void Application::InitializeProtocol() {
 
     display->SetStatus(Lang::Strings::LOADING_PROTOCOL);
 
-    if (ota_->HasMqttConfig()) {
+    std::string pa_url = CONFIG_PA_SERVER_URL;
+    if (!pa_url.empty()) {
+        Settings ws_settings("websocket", true);
+        ws_settings.SetString("url", pa_url);
+        // v0.10.1 NVS 优先：token 已由 OTA/配网写入 NVS 则保留（用户配置优先），
+        // 仅当 NVS 无值时写入 Kconfig 默认——不再无条件覆写
+        if (ws_settings.GetString("token").empty()) {
+            ws_settings.SetString("token", CONFIG_PA_SERVER_TOKEN);
+        }
+        ws_settings.SetInt("version", 1);
+        protocol_ = std::make_unique<WebsocketProtocol>();
+    } else if (ota_->HasMqttConfig()) {
         protocol_ = std::make_unique<MqttProtocol>();
     } else if (ota_->HasWebsocketConfig()) {
         protocol_ = std::make_unique<WebsocketProtocol>();
