@@ -6,22 +6,117 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from pydantic import BaseModel
+from typing import Literal
 from fastapi import FastAPI, Query, HTTPException, Request, WebSocket, WebSocketDisconnect, Depends
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import config, storage, memory, distill, proactive, chat, ingest, calendar, reminders, speaker
-from . import auth, ws_manager, xiaozhi_server
+from . import assistant_personality, barrage, config, storage, memory, distill, proactive, chat, ingest, calendar, reminders, speaker
+from . import auth, ws_manager, xiaozhi_server, audio_ws
+from .omni_perception import PerceptionProcessor
+from .omni_service import get_omni_service
 
 log = logging.getLogger("pa.api")
+omni_processor = PerceptionProcessor()
+_api_loop: asyncio.AbstractEventLoop | None = None
+
+_BARRAGE_SOURCE_EVENTS = {
+    ws_manager.EV_REMINDER,
+    ws_manager.EV_INTERVENTION,
+    ws_manager.EV_ASSISTANT_MESSAGE,
+    ws_manager.EV_GAME_BARRAGE,
+    ws_manager.EV_COURSE_NOTE,
+}
+
+
+async def _broadcast_business_event(event_type: str, payload: dict) -> None:
+    await ws_manager.manager.broadcast(event_type, payload)
+    if event_type in _BARRAGE_SOURCE_EVENTS:
+        await barrage.publish(event_type, payload)
+
+
+async def _handle_omni_event(event: dict) -> None:
+    for event_type, payload in omni_processor.handle(event):
+        await _broadcast_business_event(event_type, payload)
+
+
+def _bridge_omni_event(event: dict) -> None:
+    loop = _api_loop
+    if loop and loop.is_running():
+        asyncio.run_coroutine_threadsafe(_handle_omni_event(event), loop)
+
+
+# ── 简陋 TCP 音频服务（替代 xiaozhi_server）───────────────────
+# ESP32 v33 固件通过原始 TCP 发送二进制帧：1B type + 4B LE length + payload
+# type=0 PCM | type=1 segment_end | type=2 ping
+
+async def _tcp_audio_handler(reader, writer):
+    addr = writer.get_extra_info('peername')
+    print(f"[tcp] CONNECTED {addr}", flush=True)
+    import struct
+    buf = bytearray()
+    segm = audio_ws._BgVad()
+    assistant = chat.assistant_for(f"audio-tcp:{addr}")
+    seg_count = 0
+    try:
+        while True:
+            chunk = await asyncio.wait_for(reader.read(65536), timeout=300)
+            if not chunk:
+                break
+            buf.extend(chunk)
+            print(f"[tcp] RECV {len(chunk)}B from {addr}", flush=True)
+            while len(buf) >= 5:
+                t = buf[0]
+                flen = struct.unpack('<I', buf[1:5])[0]
+                if flen > 65536:
+                    buf.clear(); break
+                if len(buf) < 5 + flen:
+                    print(f"[tcp] WAIT type={t} need={5+flen}B have={len(buf)}B", flush=True)
+                    break
+                payload = bytes(buf[5:5+flen])
+                buf = buf[5+flen:]
+                if t == 0:  # PCM
+                    seg_count += 1
+                    for seg in segm.feed(payload):
+                        await audio_ws._save_and_detect(seg, config.inbox_dir(), assistant)
+                elif t == 1:  # segment end
+                    for seg in segm.flush():
+                        await audio_ws._save_and_detect(seg, config.inbox_dir(), assistant)
+                elif t == 2:  # ping
+                    writer.write(b'\x02'); await writer.drain()
+    except (asyncio.TimeoutError, ConnectionResetError) as e:
+        print(f"[tcp] CLOSED {addr}: {e}", flush=True)
+    except Exception as e:
+        print(f"[tcp] ERROR {addr}: {e}", flush=True)
+    try:
+        writer.close()
+    except Exception:
+        pass
+
+async def _start_tcp_audio(host="0.0.0.0", port=8004):
+    srv = await asyncio.start_server(_tcp_audio_handler, host, port)
+    print(f"[tcp_audio] ON {host}:{port}", flush=True)
+    async with srv:
+        await srv.serve_forever()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """启动后台巡检。"""
+    """启动后台巡检；ESP32 v38+ 用 /ws/audio WebSocket，不再开 TCP 8004。"""
+    global _api_loop
+    _api_loop = asyncio.get_running_loop()
+    service = get_omni_service()
+    add_event_sink = getattr(service, "add_event_sink", None)
+    if callable(add_event_sink):
+        add_event_sink(_bridge_omni_event)
+    if config.get("llm.backend", "stub") == "minicpm_o":
+        await asyncio.to_thread(service.acquire_sync, "chat-backend")
     ws_manager.manager.start_heartbeat()
     stop = asyncio.Event()
+    # 后台预热 ASR 模型（faster_whisper 首载 ~8s，预热后首句语音响应快很多）
+    from . import xiaozhi_server
+    asyncio.ensure_future(asyncio.to_thread(xiaozhi_server.warmup_asr))
 
     async def _patrol():
         reminder_poll = 60.0
@@ -31,12 +126,12 @@ async def lifespan(app: FastAPI):
             try:
                 fired_r = await asyncio.to_thread(_collect_due_reminders)
                 for item in fired_r:
-                    await ws_manager.manager.broadcast(ws_manager.EV_REMINDER, item)
+                    await _broadcast_business_event(ws_manager.EV_REMINDER, item)
                 now = asyncio.get_event_loop().time()
                 if now - last_proactive >= proactive_interval:
                     fired_i = await asyncio.to_thread(_collect_proactive)
                     for item in fired_i:
-                        await ws_manager.manager.broadcast(ws_manager.EV_INTERVENTION, item)
+                        await _broadcast_business_event(ws_manager.EV_INTERVENTION, item)
                     last_proactive = now
             except Exception as e:
                 log.warning("patrol error: %s", e)
@@ -48,6 +143,9 @@ async def lifespan(app: FastAPI):
     yield
     stop.set()
     await task
+    if get_omni_service().status()["state"] != "stopped":
+        await asyncio.to_thread(get_omni_service().stop_sync)
+    _api_loop = None
     await ws_manager.manager.shutdown()
 
 
@@ -57,32 +155,26 @@ def _collect_due_reminders():
 
 
 def _collect_proactive():
-    tr = proactive.check()
+    tr = proactive.ProactiveEngine().check()
     return [{"kind": t["kind"], "message": t["message"], "evidence": t.get("evidence", [])} for t in tr]
 
 
-app = FastAPI(title="personal-assistant", version="0.6.0", lifespan=lifespan)
+app = FastAPI(title="personal-assistant", version="0.8.0", lifespan=lifespan)
+app.middleware("http")(auth.auth_middleware)
 
 # ── 最小 Bearer token gate（PA-M-001）──────────────────────────────
-# 仅挂在暴露 PII 的敏感端点；/health /segments /settings/* 等保持开放。
 async def _require_bearer(request: Request) -> None:
-    auth = request.headers.get("authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="missing bearer token")
-    provided = auth[7:].strip()
-    expected = config.api_token()
-    # 常量时间比较防时序侧信道
-    import hmac
-    if not hmac.compare_digest(provided.encode(), expected.encode()):
-        raise HTTPException(status_code=403, detail="invalid token")
+    await auth.verify_http(request)
 
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"],
                    allow_headers=["*"])
 
-_WEB_DIR = config.ROOT / "web"
-if _WEB_DIR.is_dir():
+_WEB_DIR = config.ROOT / "web" / "dist"
+if (_WEB_DIR / "index.html").is_file():
     app.mount("/web", StaticFiles(directory=str(_WEB_DIR), html=True), name="web")
+else:
+    log.warning("PA Web static export not found at %s; /web is not mounted", _WEB_DIR)
 
 
 @app.get("/")
@@ -92,6 +184,7 @@ def root():
 
 class ChatIn(BaseModel):
     message: str
+    conversation_id: str | None = None
 
 
 # ── WebSocket ──────────────────────────────────────────────────
@@ -99,17 +192,35 @@ class ChatIn(BaseModel):
 
 @app.websocket("/ws/live")
 async def ws_live(ws: WebSocket):
-    """手机/Web 端实时推送通道。
-    上行：{type:"chat", text:"..."} 或 {type:"ping"}
-    下行：任何 broadcast 事件（transcription/chat_reply/reminder/intervention/record）"""
+    """Role-aware live channel for Web pages, overlay and PA devices."""
     if not auth.verify_ws_token(ws):
+        await ws.accept()
         await ws.close(code=1008)
         return
-    await ws_manager.manager.connect(ws)
+    role = ws.query_params.get("client", "page")
+    raw_version = ws.query_params.get("version", "1")
+    try:
+        version = int(raw_version)
+    except ValueError:
+        await ws.accept()
+        await ws.close(code=1008)
+        return
+    if role not in {"page", "overlay", "device"} or version != 1:
+        await ws.accept()
+        await ws.close(code=1008)
+        return
+    await ws_manager.manager.connect(ws, role=role, version=version)
+    conversation_id = ws.query_params.get("conversation_id") or chat.new_conversation_id("ws")
+    live_assistant = chat.assistant_for("ws:" + conversation_id)
+    await ws_manager.manager.send_to(
+        ws, "hello", {"client": role, "version": version}
+    )
+    if role == "overlay":
+        await ws_manager.manager.send_to(ws, "barrage_settings", barrage.get_settings())
     try:
         while True:
             raw = await ws.receive_text()
-            await _handle_live_message(ws, raw)
+            await _handle_live_message(ws, raw, assistant=live_assistant)
     except WebSocketDisconnect:
         ws_manager.manager.disconnect(ws)
     except Exception as e:
@@ -117,7 +228,11 @@ async def ws_live(ws: WebSocket):
         ws_manager.manager.disconnect(ws)
 
 
-async def _handle_live_message(ws: WebSocket, raw: str) -> None:
+async def _handle_live_message(
+    ws: WebSocket,
+    raw: str,
+    assistant: chat.Assistant | None = None,
+) -> None:
     import json
     try:
         msg = json.loads(raw)
@@ -128,8 +243,9 @@ async def _handle_live_message(ws: WebSocket, raw: str) -> None:
         text = (msg.get("text") or "").strip()
         if not text:
             return
+        live_assistant = assistant or chat.assistant_for(f"ws-direct:{id(ws)}")
         await asyncio.to_thread(storage.add_chat_log, "user", text)
-        reply, evidence = await asyncio.to_thread(chat.Assistant().respond, text)
+        reply, evidence = await asyncio.to_thread(live_assistant.respond, text)
         await asyncio.to_thread(storage.add_chat_log, "assistant", reply, evidence=evidence)
         await ws_manager.manager.broadcast(ws_manager.EV_CHAT_REPLY,
                                            {"text": reply, "evidence": evidence or [],
@@ -304,9 +420,176 @@ def list_memories(limit: int = 50, offset: int = 0):
     return {"memories": mems, "total": storage.count_memories()}
 
 
+@app.get("/memories/recall", dependencies=[Depends(_require_bearer)])
+def recall_memories(q: str, k: int = 5, strategy: str = "hybrid"):
+    """v0.10 混合召回端点（BM25+向量+RRF，带预算控制）。"""
+    from . import recall as recall_mod
+    rr = recall_mod.hybrid_recall(q, k=k, strategy=strategy)
+    items = [{"id": it["memory"]["id"], "kind": it["memory"].get("kind", ""),
+              "content": it["memory"].get("content", ""),
+              "priority": it["memory"].get("priority", 50),
+              "score": it["score"], "sources": it["sources"]} for it in rr.items]
+    return {"items": items, "truncated": rr.truncated,
+            "elapsed_ms": rr.elapsed_ms, "strategy": rr.strategy}
+
+
+class AssistantPersonalityIn(BaseModel):
+    preset_id: Literal["gentle", "rational", "lively", "coach", "custom"]
+    name: str
+    user_address: str
+    directness: int
+    humor: int
+    initiative: Literal["quiet", "restrained", "balanced", "active", "companion"]
+    reply_length: Literal["short", "balanced", "detailed"]
+    barrage_style: Literal["restrained", "light", "coach", "game"]
+    taboos: list[str]
+    custom_instruction: str
+
+
+class AssistantPersonalitySaveIn(AssistantPersonalityIn):
+    expected_version: int
+
+
+class ProfileFeedbackIn(BaseModel):
+    dimension: Literal[
+        "personality", "values", "goals", "habits", "skills", "knowledge",
+        "thinking_patterns", "preferences", "affective_baseline",
+    ]
+    value: str
+    action: Literal["add", "suppress"]
+    evidence_kind: Literal["user_statement"]
+    evidence: str
+
+
+def _personality_value(body: AssistantPersonalityIn) -> dict:
+    return body.model_dump(exclude={"expected_version"})
+
+
+@app.get("/assistant/personality", dependencies=[Depends(_require_bearer)])
+def get_assistant_personality():
+    return assistant_personality.current()
+
+
+@app.put("/assistant/personality", dependencies=[Depends(_require_bearer)])
+def put_assistant_personality(body: AssistantPersonalitySaveIn):
+    try:
+        return assistant_personality.save(
+            _personality_value(body), expected_version=body.expected_version
+        )
+    except assistant_personality.VersionConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/assistant/personality/preview", dependencies=[Depends(_require_bearer)])
+def preview_assistant_personality(body: AssistantPersonalityIn):
+    try:
+        value = assistant_personality.validate(_personality_value(body))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    name = value["name"]
+    address = value["user_address"]
+    direct = {
+        1: "我会先听你说完，再温和地给出建议",
+        2: "我会用温和的方式说明重点",
+        3: "我会直接说明重点，也保留必要背景",
+        4: "我会直接给出判断和下一步",
+        5: "我会明确指出问题，并推动你马上行动",
+    }[value["directness"]]
+    humor = "，偶尔带一点轻松感" if value["humor"] >= 4 else ""
+    initiative = {
+        "quiet": "只在到期提醒时打扰你",
+        "restrained": "仅在依据充分时主动提醒",
+        "balanced": "在关键时机主动提醒",
+        "active": "发现可行动的变化就及时提醒",
+        "companion": "会更自然地陪你推进当前事情",
+    }[value["initiative"]]
+    style = {
+        "restrained": "提醒：约定的时间到了，请查看待办。",
+        "light": "提醒一下：时间到了，别让待办等太久。",
+        "coach": "时间到了。现在完成第一步，然后继续。",
+        "game": "时间到，目标刷新：先处理这项待办。",
+    }[value["barrage_style"]]
+    return {
+        "chat": f"{address}，我是{name}。{direct}{humor}。",
+        "reminder": f"{address}，{style}",
+        "perception": f"{address}，{initiative}；事实不确定时我会明确说明。",
+    }
+
+
+@app.post("/profile/feedback", dependencies=[Depends(_require_bearer)])
+def add_profile_feedback(body: ProfileFeedbackIn):
+    try:
+        feedback_id = storage.add_profile_feedback(**body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"id": feedback_id, "active": True}
+
+
+@app.delete("/profile/feedback/{feedback_id}", dependencies=[Depends(_require_bearer)])
+def delete_profile_feedback(feedback_id: str):
+    if not storage.deactivate_profile_feedback(feedback_id):
+        raise HTTPException(status_code=404, detail="profile feedback not found")
+    return {"id": feedback_id, "active": False}
+
+
+class BarrageSettingsIn(BaseModel):
+    enabled: bool | None = None
+    quiet_mode: bool | None = None
+    paused_until: str | None = None
+    position: Literal["top", "center", "bottom"] | None = None
+    font_size: int | None = None
+    opacity: float | None = None
+    duration_seconds: int | None = None
+    theme: Literal["contrast", "light", "dark"] | None = None
+    display_id: str | None = None
+
+
+@app.get("/barrage/settings", dependencies=[Depends(_require_bearer)])
+def get_barrage_settings():
+    return barrage.get_settings()
+
+
+@app.put("/barrage/settings", dependencies=[Depends(_require_bearer)])
+async def put_barrage_settings(body: BarrageSettingsIn):
+    patch = body.model_dump(exclude_none=True)
+    try:
+        settings = barrage.patch_settings(patch)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await ws_manager.manager.broadcast("barrage_settings", settings, roles={"overlay"})
+    return settings
+
+
+@app.get("/barrage/status", dependencies=[Depends(_require_bearer)])
+def get_barrage_status():
+    settings = barrage.get_settings()
+    return {
+        "settings": settings,
+        "overlay_clients": ws_manager.manager.presence()["overlay"],
+        "paused": barrage.is_paused(settings),
+    }
+
+
+@app.post("/barrage/test", dependencies=[Depends(_require_bearer)])
+async def test_barrage():
+    event = await barrage.publish("test", {"text": "这是一条 PA 测试弹幕"})
+    if event is None:
+        raise HTTPException(status_code=409, detail="barrage is disabled, paused or quiet")
+    return event
+
+
 @app.get("/profile", dependencies=[Depends(_require_bearer)])
 def get_profile():
-    return distill.load_persona() or {"error": "no profile"}
+    inferred, change_summary, version = storage.latest_persona()
+    return {
+        "inferred": distill.normalize(inferred) if inferred else distill.normalize({}),
+        "effective": distill.current_profile(),
+        "version": version or 0,
+        "change_summary": change_summary or "",
+        "feedback": storage.list_profile_feedback(),
+    }
 
 
 @app.post("/distill")
@@ -315,21 +598,23 @@ def run_distill():
     return {"distilled": n, "profile": distill.load_persona()}
 
 
-class ChatIn(BaseModel):
-    message: str
-
-
 @app.post("/chat", dependencies=[Depends(_require_bearer)])
 def chat_endpoint(body: ChatIn):
-    reply, evidence = chat.Assistant().respond(body.message)
+    conversation_id = (body.conversation_id or "").strip() or chat.new_conversation_id("rest")
+    result = chat.assistant_for("rest:" + conversation_id).respond_detailed(body.message)
     storage.add_chat_log("user", body.message)
-    storage.add_chat_log("assistant", reply, evidence=evidence)
-    return {"reply": reply, "evidence": evidence}
+    storage.add_chat_log("assistant", result.reply, evidence=result.evidence)
+    return {
+        "reply": result.reply,
+        "evidence": result.evidence,
+        "conversation_id": conversation_id,
+        "metadata": result.metadata,
+    }
 
 
 @app.post("/proactive")
 def check_proactive():
-    return proactive.check()
+    return proactive.ProactiveEngine().check()
 
 
 @app.post("/ingest")
@@ -345,9 +630,20 @@ def list_events(day: str = ""):
     return {"events": calendar.get_events()}
 
 
+@app.get("/calendar")
+def search_calendar(q: str = ""):
+    return {"events": calendar.search(q), "query": q}
+
+
 @app.get("/reminders")
 def list_reminders():
     return {"reminders": reminders.list_all()}
+
+
+@app.post("/reminders/check")
+def check_reminders():
+    fired = reminders.check_due()
+    return {"fired": len(fired), "items": fired}
 
 
 @app.get("/speakers")
@@ -367,15 +663,26 @@ def run_verify():
 
 
 @app.post("/recommend")
-def do_recommend():
+def do_recommend(kind: str = "book", query: str = ""):
     from . import recommend
-    return recommend.run()
+    return {"recommendations": recommend.recommend(kind=kind, query=query)}
 
 
 @app.get("/wiki")
 def search_wiki(q: str = ""):
     from . import wiki
     return wiki.search(q) if q else {"topics": wiki.list_topics()}
+
+
+@app.post("/wiki/build")
+def build_wiki():
+    from . import wiki
+    return wiki.build()
+
+
+@app.post("/triggers")
+def fire_triggers():
+    return proactive.ProactiveEngine().check()
 
 
 @app.get("/status")
@@ -388,6 +695,58 @@ def full_status():
         "speakers": len(storage.get_speakers()),
         "profile_version": distill.current_version(),
     }
+
+
+@app.get("/local-model/status")
+def local_model_status():
+    return get_omni_service().status()
+
+
+@app.post("/local-model/start", dependencies=[Depends(_require_bearer)])
+async def local_model_start():
+    try:
+        status = await asyncio.to_thread(get_omni_service().acquire_sync, "manual")
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    await ws_manager.manager.broadcast(ws_manager.EV_LOCAL_MODEL_STATUS, status)
+    return status
+
+
+@app.post("/local-model/stop", dependencies=[Depends(_require_bearer)])
+async def local_model_stop():
+    status = await asyncio.to_thread(get_omni_service().release_sync, "manual")
+    await ws_manager.manager.broadcast(ws_manager.EV_LOCAL_MODEL_STATUS, status)
+    return status
+
+
+@app.post("/perception/start", dependencies=[Depends(_require_bearer)])
+async def perception_start():
+    service = get_omni_service()
+    try:
+        await asyncio.to_thread(service.acquire_sync, "perception")
+        await asyncio.to_thread(service.request_sync, "start_monitoring", {})
+    except RuntimeError as exc:
+        await asyncio.to_thread(service.release_sync, "perception")
+        raise HTTPException(503, str(exc)) from exc
+    status = service.status()
+    await ws_manager.manager.broadcast(ws_manager.EV_PERCEPTION, {"state": "running"})
+    await ws_manager.manager.broadcast(ws_manager.EV_LOCAL_MODEL_STATUS, status)
+    return {"perception": "running", "local_model": status}
+
+
+@app.post("/perception/stop", dependencies=[Depends(_require_bearer)])
+async def perception_stop():
+    service = get_omni_service()
+    if "perception" not in service.consumers():
+        return {"perception": "stopped", "local_model": service.status()}
+    try:
+        await asyncio.to_thread(service.request_sync, "stop_monitoring", {})
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    status = await asyncio.to_thread(service.release_sync, "perception")
+    await ws_manager.manager.broadcast(ws_manager.EV_PERCEPTION, {"state": "stopped"})
+    await ws_manager.manager.broadcast(ws_manager.EV_LOCAL_MODEL_STATUS, status)
+    return {"perception": "stopped", "local_model": status}
 
 
 class LLMSettingsIn(BaseModel):
@@ -404,20 +763,36 @@ class LLMSettingsIn(BaseModel):
 @app.get("/settings/llm")
 def llm_settings_get():
     from . import llm
-    return llm.effective_llm_config(mask_key=True)
+    return llm.effective_llm_config()
 
 
 @app.post("/settings/llm")
 def llm_settings_update(body: LLMSettingsIn):
-    if body.backend:
-        if body.backend not in ("stub", "anthropic_proxy", "ollama",
-                                "openai_compat", "glm_anthropic"):
-            raise HTTPException(400, f"unknown backend: {body.backend}")
-        config.set_override("llm.backend", body.backend)
-    backend = config.get("llm.backend", "stub")
-    applied = []
+    requested = body.backend
+    if requested and requested not in (
+        "stub", "anthropic_proxy", "ollama", "openai_compat", "glm_anthropic",
+        "deepseek", "deepseek_anthropic", "minicpm_o",
+    ):
+        raise HTTPException(400, f"unknown backend: {requested}")
+    previous = config.get("llm.backend", "stub")
+    backend = requested or previous
+    service = get_omni_service()
+    if backend == "minicpm_o" and previous != "minicpm_o":
+        try:
+            service.acquire_sync("chat-backend")
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
+    if requested:
+        config.set_override("llm.backend", requested)
+    if previous == "minicpm_o" and backend != "minicpm_o":
+        service.release_sync("chat-backend")
     if backend == "stub":
         return {"backend": "stub", "applied": [], "note": "stub 无可配字段"}
+    if backend == "minicpm_o":
+        from . import llm
+        return {"backend": backend, "applied": [],
+                "effective": llm.effective_llm_config()}
+    applied = []
     for field in ("model", "context_window", "max_tokens", "thinking_effort",
                   "thinking_format", "base_url", "api_key"):
         val = getattr(body, field)

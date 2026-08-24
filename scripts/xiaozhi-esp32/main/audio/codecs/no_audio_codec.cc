@@ -9,10 +9,10 @@
 
 NoAudioCodec::~NoAudioCodec() {
     if (rx_handle_ != nullptr) {
-        ESP_ERROR_CHECK(i2s_channel_disable(rx_handle_));
+        i2s_channel_disable(rx_handle_);
     }
     if (tx_handle_ != nullptr) {
-        ESP_ERROR_CHECK(i2s_channel_disable(tx_handle_));
+        i2s_channel_disable(tx_handle_);
     }
 }
 

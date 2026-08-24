@@ -31,4 +31,4 @@ com.personalassistant
 - ✅ Phase 1：工程脚手架 + 主题 + 组件 + 数据层 + 导航 + Chat 屏
 - ✅ Phase 2：memory/persona/calendar/reminder/verify/recommend/wiki/settings/dashboard 9 屏（全接真后端）
 - ✅ 定位修正（2026-06-29）：app = 纯前端显示+对话；录音/转录由硬件设备→电脑，app 不参与。已移除 ListeningService/UploadTranscriptWorker/Inbox 屏/录音权限/WorkManager。
-- ⏳ Phase 3：到点提醒通知（轮询 /reminders/check 或服务器推送）+ 整合自检
+- ✅ Phase 3：到点提醒通知（ReminderWorker 轮询 /reminders/check + NotificationChannels 本地通知）+ 整合自检
