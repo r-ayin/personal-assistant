@@ -26,6 +26,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from . import auth, storage, ws_manager
 from . import chat as _chat
+from . import llm as _llm
 
 log = logging.getLogger("pa.xiaozhi")
 
@@ -173,6 +174,15 @@ async def _tts_to_opus_frames(text: str, voice: str = "zh-CN-XiaoxiaoNeural") ->
     return opus_packets
 
 
+def _voice_llm():
+    """音箱通道 LLM：max_tokens 限长（xiaozhi.llm_max_tokens），避免超长回复拖长 TTS。
+
+    每次构造新实例成本极低（仅持有配置值）；测试可注入替身 assistant 绕过。
+    """
+    from . import config
+    return _llm.get_llm(max_tokens=config.get("xiaozhi.llm_max_tokens", 160))
+
+
 def warmup_asr():
     """预热 xiaozhi 路径的 faster_whisper 模型（serve 启动时后台调用）。
 
@@ -313,9 +323,12 @@ class XiaozhiSession:
     """单个设备连接的会话状态机。"""
 
     # 服务端 VAD 参数（设备 VAD 不可靠时的兜底）
-    _VAD_THRESHOLD = 1500      # RMS 阈值，<此值视为静音帧（环境噪声 RMS 常在 400-2000，需高于此）
+    _VAD_THRESHOLD = 1500      # 最低 RMS 阈值下限；有效阈值 = 噪声基线 *1.8，见 _vad_threshold
+    _VAD_NOISE_FRAMES = 16     # 前 N 帧（16*60ms≈1s）评估噪声基底
+    _VAD_MIN_THRESHOLD = 2500  # 自适应阈值下限（环境太静时不再多等尾巴）
+    _VAD_MAX_NOISE = 12000     # 噪声基底钳制上限（避免持续高音被误当背景噪声）
     _VAD_SILENCE_LIMIT = 8     # 连续静音帧数上限（8 * 60ms = 480ms → finalize，缩短响应尾巴）
-    _VAD_MAX_FRAMES = 250      # 最大聆听帧数（250 * 60ms = 15s → 强制 finalize）
+    _VAD_MAX_FRAMES = 133      # 最大聆听帧数（133 * 60ms ≈ 8s 保险 → 强制 finalize，防噪声拖满 15s）
 
     def __init__(self, ws, device_key: str | None = None,
                  asr=None, assistant=None, tts=None):
@@ -339,10 +352,14 @@ class XiaozhiSession:
         self._listen_frames = 0
         self._silence_frames = 0
         self._pcm_buf_log_at = 0       # 下次打印累积长度的帧序号
+        self._vad_noise_rms: list[int] = []   # 前 _VAD_NOISE_FRAMES 帧 RMS，评估噪声基底
+        self._vad_threshold = self._VAD_MIN_THRESHOLD  # 自适应阈值（随噪声基线更新）
+        self._seen_voice = False       # 本轮是否出现过有效语音（未出声前不因静音切段）
         # 测试替身可注入；默认走真实 faster-whisper / Assistant / Edge TTS
         self._asr_func = asr or self._asr
         self._assistant = assistant or _chat.assistant_for(
-            "xiaozhi:" + (device_key or self.session_id))
+            "xiaozhi:" + (device_key or self.session_id),
+            llm=_voice_llm())
         self._tts_func = tts or _tts_to_opus_frames
 
     def _set_state(self, state: str) -> None:
@@ -408,6 +425,9 @@ class XiaozhiSession:
             self._listen_frames = 0
             self._silence_frames = 0
             self._pcm_buf_log_at = 0
+            self._vad_noise_rms = []
+            self._vad_threshold = self._VAD_MIN_THRESHOLD
+            self._seen_voice = False
             self._set_state(_STATE_LISTENING)
         elif state == "stop":
             self._listening = False
@@ -433,20 +453,29 @@ class XiaozhiSession:
         self._pcm_buf.extend(pcm)
         self._listen_frames += 1
 
-        # 服务端 VAD：算 RMS
+        # 服务端 VAD：算 RMS；有效阈值自适应噪声基线（前 N 帧第 3 小值 *1.8）
         rms = self._rms(pcm)
-        if rms < self._VAD_THRESHOLD:
-            self._silence_frames += 1
+        if len(self._vad_noise_rms) < self._VAD_NOISE_FRAMES:
+            self._vad_noise_rms.append(rms)
+            if len(self._vad_noise_rms) == self._VAD_NOISE_FRAMES:
+                base = min(sorted(self._vad_noise_rms)[2], self._VAD_MAX_NOISE)
+                self._vad_threshold = max(int(base * 1.8), self._VAD_MIN_THRESHOLD)
+                log.info("VAD 噪声基线: rms=%d 有效阈值=%d", base, self._vad_threshold)
+        if rms >= self._vad_threshold:
+            self._seen_voice = True
+            # 宽容积分：语音帧归还 2 个静音帧（容忍偶发尖峰噪声），不为 0 而清零
+            self._silence_frames = max(0, self._silence_frames - 2)
         else:
-            self._silence_frames = 0
+            self._silence_frames += 1
 
-        # 周期性日志（前 3 帧 + 每 50 帧），含 RMS 用于调阈值
+        # 周期性日志（前 3 帧 + 每 50 帧），含 RMS/阈值用于调参
         if self._listen_frames <= 3 or self._listen_frames % 50 == 0:
-            log.info("listen frame=%d pcm=%dB rms=%d silence=%d",
+            log.info("listen frame=%d pcm=%dB rms=%d thr=%d silence=%d",
                      self._listen_frames, len(self._pcm_buf),
-                     rms, self._silence_frames)
+                     rms, self._vad_threshold, self._silence_frames)
 
-        # 触发 finalize 条件
+        # 触发 finalize 条件：静音 8 帧（480ms）即切段，不再等满 15s；
+        # 阈值已自适应噪声基线，无需再校验"是否出现过语音"
         need_finalize = False
         if self._silence_frames >= self._VAD_SILENCE_LIMIT \
                 and len(self._pcm_buf) >= SAMPLE_RATE * SAMPLE_WIDTH // 2:
@@ -597,8 +626,9 @@ class XiaozhiSession:
                 if not self._turn_active(turn_id):
                     return
                 await self._send_json({"type": "tts", "state": "start"})
-                reply, evidence = await asyncio.to_thread(
+                result = await asyncio.to_thread(
                     self._assistant.respond_stream, text, True, on_delta=on_delta)
+                reply, evidence = result.reply, result.evidence
                 if not self._turn_active(turn_id):
                     return
                 # 无句末标点的残余尾巴也要播报
@@ -682,10 +712,13 @@ class XiaozhiSession:
             with open(debug_path, "wb") as f:
                 f.write(wav_bytes)
             model = self._load_asr_model()
+            cfg = config.get("asr.faster_whisper", {})
             segments, info = model.transcribe(
                 str(debug_path), vad_filter=False,
                 language=config.get("asr.language", "zh"),
                 condition_on_previous_text=False,
+                beam_size=cfg.get("beam_size", 1),
+                best_of=cfg.get("best_of", 1),
                 initial_prompt="以下是简体中文普通话日常对话。",
             )
             # 收集 segments（faster_whisper 是 generator，需遍历）并过滤幻觉/低置信段

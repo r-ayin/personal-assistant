@@ -2,7 +2,18 @@
 
 > 直导式构建。v0.1 深核主干；v0.2 说话人/日历/提醒/反幻觉；v0.3 推荐联网搜索；v0.4 个人 wiki；v0.5 LLM 可配 + 前端设计文档；v0.6 安卓 App；v0.7 DeepSeek 后端；v0.8 ESP32-S3 双模式固件 + /ws/audio 管线；Web 面板 Next.js 化；真 ASR/声纹后端就绪；v0.10 TencentDB Agent Memory 架构融合。
 
-## 当前状态（2026-08-08）
+## 当前状态（2026-08-11）
+### v0.11 实时语音应答增强（进行中，实体设备已刷写并联通）
+- ✅ 服务端 turn 状态机定型：`idle→listening→recognizing→thinking→speaking`，单调 `turn_id` + generation guard 可取消 turn；LLM 解包契约修复（`AssistantResponse` 对象解包，600-604 行）。
+- ✅ 服务端 VAD 自适应：噪声基线（前 16 帧 sorted[2]×1.8，钳位 12k）+ 宽容积分（语音帧 -2 / 静音帧 +1，连续 8 帧≈480ms 切段）+ 满帧保险 8s（原 15s，防噪声环境拖满）。
+- ✅ 固件自定义唤醒词「江江」：sdkconfig 重建启用 MultiNet6（`CONFIG_SR_MN_CN_MULTINET6_QUANT=y`）+ `CustomWakeWord::Initialize` 命令集补齐注入；boot 日志实测 `Command: jiang jiang`。已刷写 ota_0。
+- ✅ 固件 Wi-Fi PSM 关停：音频服务运行期 `WIFI_PS_NONE`（Stop 恢复 `MIN_MODEM`），消除音频攒发；已刷写。
+- ✅ 语音响应提速（08-09 ~ 08-11，服务端）：
+  - LLM 限长：`get_llm(max_tokens=None)` 覆盖参数 + 音箱通道 `_voice_llm()` 限 160 tokens（此前实测一 turn llm_ms=35s，回复被拉满 4096）；
+  - ASR：medium→small + beam/best_of 5→1 贪心解码（调用处接入配置）；small 模型 3.7s 预热。
+- ✅ 服务 8004 已重启上线（PID 42332）：small 模型加载、设备 `/ws/audio` 重连、ASR 预热完成。
+- ✅ 测试：`tests/test_xiaozhi_session.py` 12/12 通过（可取消 turn / 终态 / VAD 切段 / 协议边界）。
+- ⏳ 待办：真机复测分段时延（asr_ms / llm_ms / tts_ms，目标 EOU→STT p95≤2s、STT→首Opus p95≤4s）；08-09 日志观测到一轮 15s 满帧空 ASR（环境噪声无 480ms 静音）→ 已用 8s 保险缓解，待复测确认；Type-C 耳机输出不可用（板无 DAC/codec），输出方案评估：外接 I2S DAC/功放（零代码）或固件新增 USB UAC device（新开发）。
 - ✅ v0.10 Token 清理与环境变量化：跟踪文件硬编码清零，PA_API_TOKEN 轮换（旧值失效），固件 token 走 sdkconfig.local（gitignore）/ 云编译 secrets.PA_WS_TOKEN。
 - ✅ v0.10 记忆架构融合（复刻 TencentDB-Agent-Memory L0-L3 + 混合召回，Python 栈落地）：
   - L1 两阶段去重：priority 分档 + 向量候选 top-5 + LLM 判决 store/update/merge/skip
