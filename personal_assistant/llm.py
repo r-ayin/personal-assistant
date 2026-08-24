@@ -905,11 +905,14 @@ def _llm_fields(sec: str) -> dict:
             "thinking_format": g("thinking_format", "glm")}
 
 
-def get_llm() -> LLMClient:
+def get_llm(max_tokens: int | None = None) -> LLMClient:
+    """按 config 构造 LLM 客户端；max_tokens 非空时覆盖配置（语音通道限长回复）。"""
     backend = config.get("llm.backend", "stub")
     if backend == "stub":
         return StubLLM()
     f = _llm_fields(backend)
+    if max_tokens is not None:
+        f["max_tokens"] = max_tokens
     if backend == "minicpm_o":
         return MiniCPMOLLM(
             requester=get_omni_requester(),

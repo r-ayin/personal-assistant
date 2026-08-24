@@ -73,12 +73,12 @@
     "backend": "stub",
     "language": "zh",
     "faster_whisper": {
-      "model_size": "medium",
+      "model_size": "small",
       "device": "cuda",
       "compute_type": "float16",
       "vad_filter": true,
-      "beam_size": 5,
-      "best_of": 5,
+      "beam_size": 1,
+      "best_of": 1,
       "condition_on_previous_text": true
     },
     "stub": {}
@@ -124,8 +124,12 @@
     "dedup_enabled": true,
     "l1_batch_max": 10,
     "priority_drop_thresholds": {
-      "fact": 50, "event": 60, "emotion": 40,
-      "preference": 50, "intention": 50, "skill": 50
+      "fact": 50,
+      "event": 60,
+      "emotion": 40,
+      "preference": 50,
+      "intention": 50,
+      "skill": 50
     },
     "scene_max": 15,
     "scene_min_memories": 10,
@@ -155,5 +159,8 @@
     "max_rounds": 8,
     "max_history_chars": 12000,
     "web_search": "auto"
+  },
+  "xiaozhi": {
+    "llm_max_tokens": 160
   }
 }

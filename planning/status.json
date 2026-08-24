@@ -4,19 +4,23 @@
   "currentStage": "development",
   "locked": false,
   "version": "0.11.0",
-  "lastUpdated": "2026-08-09T00:00:00+08:00",
+  "lastUpdated": "2026-08-11T00:00:00+08:00",
   "taskType": "new-feature",
   "taskName": "安全 Git 同步 + 实时语音应答增强",
   "completedStages": [
     "requirements",
     "prd"
   ],
-  "notes": "v0.11 新主线：以实时 GitHub origin/main 为净化基线重建安全历史（排除固件二进制/managed components/本机凭据）；实时语音增强（可取消 turn 状态机、流式分句 TTS、Opus pacing、VAD 终态、协议边界）。旧 v0.10 验证结果 224 passed 仅为历史基线，本轮验证以净化分支实测为准。",
-  "activeWork": [],
+  "notes": "v0.11 实时语音应答增强（实体回归中）：turn 状态机+generation guard 可取消、VAD 自适应噪声基线+宽容积分+8s 满帧保险、固件自定义唤醒词「江江」(MultiNet6) 与 Wi-Fi PSM 关停已刷写 ota_0；语音提速：xiaozhi 通道 LLM max_tokens=160 限长 + ASR small/beam=1（服务 8004 已重启上线，small 3.7s 预热）。安全 Git 同步主线：净化分支按计划推进，本机脏历史不推公开仓库。",
+  "activeWork": [
+    "真机复测分段时延：EOU→STT p95≤2s、STT→首Opus p95≤4s",
+    "噪声环境 VAD 结尾切段收尾（观察 8s 保险效果后决定是否收紧静音判定）",
+    "Type-C 音频输出方案评估：外接 I2S DAC/功放（零代码） vs 固件新增 USB UAC device"
+  ],
   "verification": {
-    "contracts": "本轮全量 268 passed / 3 skipped（净化分支实测，待硬件回归）",
-    "regression": "stub 全链路 + 新增 xiaozhi 状态机/流式/固件契约用例",
-    "fixLoop": "FTS 并发建表竞态修复；Lint guard 误判改用脚本化补丁"
+    "contracts": "tests/test_xiaozhi_session.py 12/12；真机分段时延（asr_ms/llm_ms/tts_ms）待复测",
+    "regression": "stub 全链路回归基线 268 passed / 3 skipped（v0.10 历史基线 224）",
+    "fixLoop": "LLM AssistantResponse 解包修复；VAD 15s 满帧空 ASR（噪声环境）→ 满帧保险降至 8s"
   },
   "engine": {
     "lastEngineAction": "2026-08-07T17:55:59Z"

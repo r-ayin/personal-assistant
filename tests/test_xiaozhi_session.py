@@ -17,6 +17,7 @@ import json
 import pytest
 
 from personal_assistant import xiaozhi_server
+from personal_assistant.chat import AssistantResponse
 from personal_assistant.xiaozhi_server import XiaozhiSession, _ProtocolError
 
 _PCM_FRAME = b"\x00" * 1920  # 60ms @16kHz mono 16bit
@@ -54,7 +55,7 @@ class FakeAssistant:
         reply = "你好，有什么可以帮你。"
         if on_delta is not None:
             on_delta(reply)
-        return reply, ["ev-1"]
+        return AssistantResponse(reply=reply, evidence=["ev-1"], metadata={})
 
 
 def _opus_session(ws: FakeWS, asr=None, assistant=None, tts=None) -> XiaozhiSession:
@@ -169,7 +170,7 @@ def test_abort_consumed_while_llm_blocked(monkeypatch) -> None:
             def respond_stream(self, text, voice=False, on_delta=None):
                 blocked.set()
                 released.wait()
-                return "不该被发送的回复", []
+                return AssistantResponse(reply="不该被发送的回复", evidence=[], metadata={})
 
         ws = FakeWS()
         sess = _opus_session(ws, assistant=BlockingAssistant())
@@ -209,7 +210,7 @@ def test_abort_then_next_turn_completes(monkeypatch) -> None:
             def respond_stream(self, text, voice=False, on_delta=None):
                 blocked.set()
                 released.wait()
-                return "作废", []
+                return AssistantResponse(reply="作废", evidence=[], metadata={})
 
         ws = FakeWS()
         sess = _opus_session(ws, assistant=BlockingAssistant())
@@ -289,7 +290,7 @@ class _StreamingAssistant:
             if on_delta is not None:
                 on_delta(b)
         self.finished = True
-        return "".join(self.blocks), []
+        return AssistantResponse(reply="".join(self.blocks), evidence=[], metadata={})
 
 
 def test_first_opus_before_llm_final(monkeypatch) -> None:
@@ -357,7 +358,7 @@ def test_abort_cancels_tts_consumer(monkeypatch) -> None:
                 gate.wait()
                 if on_delta is not None:
                     on_delta("第一句。")
-                return "第一句。", []
+                return AssistantResponse(reply="第一句。", evidence=[], metadata={})
 
         ws = FakeWS()
         sess = _opus_session(ws, assistant=GatedAssistant())
