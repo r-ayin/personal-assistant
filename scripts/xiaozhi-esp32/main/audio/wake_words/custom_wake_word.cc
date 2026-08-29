@@ -3,6 +3,7 @@
 #include "system_info.h"
 #include "assets.h"
 
+#include <algorithm>
 #include <esp_log.h>
 #include <esp_mn_iface.h>
 #include <esp_mn_models.h>
@@ -96,6 +97,21 @@ bool CustomWakeWord::Initialize(AudioCodec* codec, srmodel_list_t* models_list) 
     } else {
         models_ = models_list;
         ParseWakenetModelConfig();
+#ifdef CONFIG_CUSTOM_WAKE_WORD
+        // 模型 index.json 的命令集中可能没有自定义唤醒词（如"江江"），
+        // 无条件追加，保证 CONFIG_CUSTOM_WAKE_WORD 始终生效。
+        threshold_ = std::min(threshold_, CONFIG_CUSTOM_WAKE_WORD_THRESHOLD / 100.0f);
+        bool has_custom = false;
+        for (const auto& c : commands_) {
+            if (c.command == CONFIG_CUSTOM_WAKE_WORD) {
+                has_custom = true;
+                break;
+            }
+        }
+        if (!has_custom) {
+            commands_.push_back({CONFIG_CUSTOM_WAKE_WORD, CONFIG_CUSTOM_WAKE_WORD_DISPLAY, "wake"});
+        }
+#endif
     }
 
     if (models_ == nullptr || models_->num == -1) {

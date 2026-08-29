@@ -2,8 +2,9 @@
 
 > 直导式构建。v0.1 深核主干；v0.2 说话人/日历/提醒/反幻觉；v0.3 推荐联网搜索；v0.4 个人 wiki；v0.5 LLM 可配 + 前端设计文档；v0.6 安卓 App；v0.7 DeepSeek 后端；v0.8 ESP32-S3 双模式固件 + /ws/audio 管线；Web 面板 Next.js 化；真 ASR/声纹后端就绪；v0.10 TencentDB Agent Memory 架构融合。
 
-## 当前状态（2026-08-11）
+## 当前状态（2026-08-24）
 ### v0.11 实时语音应答增强（进行中，实体设备已刷写并联通）
+- 🚧 主线与详细进度登记在 `personal-assistant-v011` 工作区（PROGRESS.md / planning/status.json）。本仓库为固件/总览侧：自定义唤醒词「江江」+ Wi-Fi PSM 关停已刷写 ota_0；服务端 LLM 限长 160 + ASR small/beam=1 已上线 8004；真机分段时延复测待办。
 - ✅ 服务端 turn 状态机定型：`idle→listening→recognizing→thinking→speaking`，单调 `turn_id` + generation guard 可取消 turn；LLM 解包契约修复（`AssistantResponse` 对象解包，600-604 行）。
 - ✅ 服务端 VAD 自适应：噪声基线（前 16 帧 sorted[2]×1.8，钳位 12k）+ 宽容积分（语音帧 -2 / 静音帧 +1，连续 8 帧≈480ms 切段）+ 满帧保险 8s（原 15s，防噪声环境拖满）。
 - ✅ 固件自定义唤醒词「江江」：sdkconfig 重建启用 MultiNet6（`CONFIG_SR_MN_CN_MULTINET6_QUANT=y`）+ `CustomWakeWord::Initialize` 命令集补齐注入；boot 日志实测 `Command: jiang jiang`。已刷写 ota_0。
@@ -106,10 +107,9 @@ python3 -m personal_assistant.cli verify                                     # �
 python3 -m personal_assistant.cli serve                                      # API（默认端口已改为 8004，见未提交改动）
 ```
 
-> 上次自动审计: 2026-08-08 01:56 | 工作区 7 文件有改动 (5M/2A/0D)
+> 2026-08-29 手动同步：工作区 33 处改动（27M/6A）已分组提交入库并推送 ecs；此前自动审计 2026-08-24 23:51
 
-## 未提交改动备注（2026-08-08）
-工作区/暂存区有大量改动尚未提交，仅记录状态、不替用户提交：
+## 改动备注（07-18/07-19 批次已随 2026-08-29 同步入库）
 
 **第二次审计修复（07-19）**
 - `personal_assistant/chat.py`：`respond()` 改为返回 `(reply, evidence)` 元组
@@ -134,7 +134,12 @@ python3 -m personal_assistant.cli serve                                      # A
 - `personal_assistant/proactive.py`、`reminders.py`：ASCII-safe 输出、`check_due` 返回列表
 - 新增 `start-pa.bat`、OTA 固件包与元数据
 
-> 如需把这些改动归档到 git，建议用户自行 review 后 `git add` / `git commit`。
+**多轮会话同步批次（08-29，5 个提交）**
+- 后端：`ConversationRegistry` 多轮会话注册表（TTL/EVICT）+ `conversation_id` 贯通 api/chat/llm；`LLMResult` usage/缓存指标 + `chat_messages_detailed`
+- 固件：OTA 保留本地 websocket url/token（直连 PA 不被 OTA 覆盖）；audio ws 鉴权改走 Authorization Header；自定义唤醒词「江江」无条件追加命令集
+- 构建：`build-idf.py`/`build-local.ps1` esp-rom-elfs 版本自适应 + `COMSPEC /D` 绕过 cmd.exe AutoRun 切换 cwd
+- 端侧：Android `ChatIn/ChatOut` 与 Web `api.chat` 贯通 `conversation_id`，前端测试扩展
+- 测试基线：251 passed / 3 skipped
 
 ## 已知风险与待收尾项
 详见 [PA-TODO.md](PA-TODO.md) — 22 项待办（1 P0 / 5 P1 / 9 P2 / 7 P3）。
