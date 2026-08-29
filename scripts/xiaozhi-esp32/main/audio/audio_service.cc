@@ -1,5 +1,6 @@
 #include "audio_service.h"
 #include <esp_log.h>
+#include <esp_wifi.h>
 #include <cstring>
 
 /* Background audio collection hook — feeds PCM data to the dual-mode collector */
@@ -131,6 +132,9 @@ void AudioService::Start() {
     service_stopped_ = false;
     xEventGroupClearBits(event_group_, AS_EVENT_AUDIO_TESTING_RUNNING | AS_EVENT_WAKE_WORD_RUNNING | AS_EVENT_AUDIO_PROCESSOR_RUNNING);
 
+    // 音频服务运行期间关闭 Wi-Fi 省电（PSM），避免 DTIM 节拍导致音频包攒发/高延迟
+    esp_wifi_set_ps(WIFI_PS_NONE);
+
     esp_timer_start_periodic(audio_power_timer_, 1000000);
 
 #if CONFIG_USE_AUDIO_PROCESSOR
@@ -173,6 +177,8 @@ void AudioService::Start() {
 
 void AudioService::Stop() {
     esp_timer_stop(audio_power_timer_);
+    // 服务停止（重启/OTA）时恢复默认省电模式
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
     service_stopped_ = true;
     xEventGroupSetBits(event_group_, AS_EVENT_AUDIO_TESTING_RUNNING |
         AS_EVENT_WAKE_WORD_RUNNING |
