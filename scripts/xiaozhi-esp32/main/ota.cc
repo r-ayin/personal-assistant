@@ -186,7 +186,9 @@ esp_err_t Ota::CheckVersion() {
                 continue;
             }
             if (cJSON_IsString(item)) {
-                if (settings.GetString(item->string) != item->valuestring) {
+                if (ShouldPreserveLocalWebsocketSetting(item->string)) {
+                    ESP_LOGI(TAG, "Keeping local websocket %s", item->string);
+                } else if (settings.GetString(item->string) != item->valuestring) {
                     settings.SetString(item->string, item->valuestring);
                 }
             } else if (cJSON_IsNumber(item)) {
