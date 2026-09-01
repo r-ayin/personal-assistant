@@ -7,7 +7,6 @@
 
 #include <cJSON.h>
 #include <esp_partition.h>
-#include <model_path.h>
 #include <map>
 #include <string>
 
@@ -43,7 +42,6 @@ private:
     bool InitializePartition();
     void UnApplyPartition();
     static bool FindPartition(Assets* assets);
-    static bool LoadSrmodelsFromIndex(Assets* assets, cJSON* root = nullptr);
   
     class AssetStrategy {
     public:
@@ -83,7 +81,6 @@ protected:
     const esp_partition_t* partition_ = nullptr;
     bool partition_valid_ = false;
     std::string default_assets_url_;
-    srmodel_list_t* models_list_ = nullptr;
 };
 
 #endif
