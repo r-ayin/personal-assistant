@@ -1200,3 +1200,116 @@ function(build_default_assets_bin)
     endif()
 
     list(APPEND BUILD_ARGS "--esp_sr_model_path" "${ESP_SR_MODEL_PATH}")
+    list(APPEND BUILD_ARGS "--xiaozhi_fonts_path" "${XIAOZHI_FONTS_PATH}")
+
+    # Create custom command to build assets
+    add_custom_command(
+        OUTPUT ${GENERATED_ASSETS_BIN}
+        COMMAND python ${PROJECT_DIR}/scripts/build_default_assets.py ${BUILD_ARGS}
+        DEPENDS
+            ${SDKCONFIG}
+            ${PROJECT_DIR}/scripts/build_default_assets.py
+        COMMENT "Building default assets.bin based on configuration"
+        VERBATIM
+    )
+
+    # Create target for generated assets
+    add_custom_target(generated_default_assets ALL
+        DEPENDS ${GENERATED_ASSETS_BIN}
+    )
+
+    # Set the generated file path in parent scope
+    set(GENERATED_ASSETS_LOCAL_FILE ${GENERATED_ASSETS_BIN} PARENT_SCOPE)
+
+    message(STATUS "Default assets build configured: ${GENERATED_ASSETS_BIN}")
+endfunction()
+
+
+# Function to get local assets file path (handles both URL and local file)
+function(get_assets_local_file assets_source assets_local_file_var)
+    # Check if it's a URL (starts with http:// or https://)
+    if(assets_source MATCHES "^https?://")
+        # It's a URL, download it
+        get_filename_component(ASSETS_FILENAME "${assets_source}" NAME)
+        set(ASSETS_LOCAL_FILE "${CMAKE_BINARY_DIR}/${ASSETS_FILENAME}")
+        set(ASSETS_TEMP_FILE "${CMAKE_BINARY_DIR}/${ASSETS_FILENAME}.tmp")
+
+        # Check if local file exists
+        if(EXISTS ${ASSETS_LOCAL_FILE})
+            message(STATUS "Assets file ${ASSETS_FILENAME} already exists, skipping download")
+        else()
+            message(STATUS "Downloading ${ASSETS_FILENAME}")
+
+            # Clean up any existing temp file
+            if(EXISTS ${ASSETS_TEMP_FILE})
+                file(REMOVE ${ASSETS_TEMP_FILE})
+            endif()
+
+            # Download to temporary file first
+            file(DOWNLOAD ${assets_source} ${ASSETS_TEMP_FILE}
+                 STATUS DOWNLOAD_STATUS)
+            list(GET DOWNLOAD_STATUS 0 STATUS_CODE)
+            if(NOT STATUS_CODE EQUAL 0)
+                # Clean up temp file on failure
+                if(EXISTS ${ASSETS_TEMP_FILE})
+                    file(REMOVE ${ASSETS_TEMP_FILE})
+                endif()
+                message(FATAL_ERROR "Failed to download ${ASSETS_FILENAME} from ${assets_source}")
+            endif()
+
+            # Move temp file to final location (atomic operation)
+            file(RENAME ${ASSETS_TEMP_FILE} ${ASSETS_LOCAL_FILE})
+            message(STATUS "Successfully downloaded ${ASSETS_FILENAME}")
+        endif()
+    else()
+        # It's a local file path
+        if(IS_ABSOLUTE "${assets_source}")
+            set(ASSETS_LOCAL_FILE "${assets_source}")
+        else()
+            set(ASSETS_LOCAL_FILE "${CMAKE_CURRENT_SOURCE_DIR}/${assets_source}")
+        endif()
+
+        # Check if local file exists
+        if(NOT EXISTS ${ASSETS_LOCAL_FILE})
+            message(FATAL_ERROR "Assets file not found: ${ASSETS_LOCAL_FILE}")
+        endif()
+
+        message(STATUS "Using assets file: ${ASSETS_LOCAL_FILE}")
+    endif()
+
+    set(${assets_local_file_var} ${ASSETS_LOCAL_FILE} PARENT_SCOPE)
+endfunction()
+
+
+partition_table_get_partition_info(size "--partition-name assets" "size")
+partition_table_get_partition_info(offset "--partition-name assets" "offset")
+if ("${size}" AND "${offset}")
+    # Flash assets based on configuration
+    if(CONFIG_FLASH_DEFAULT_ASSETS)
+        # Build default assets based on configuration
+        build_default_assets_bin()
+        esptool_py_flash_to_partition(flash "assets" "${GENERATED_ASSETS_LOCAL_FILE}")
+        message(STATUS "Generated default assets flash configured: ${GENERATED_ASSETS_LOCAL_FILE} -> assets partition")
+    elseif(CONFIG_FLASH_CUSTOM_ASSETS)
+        # Flash custom assets
+        get_assets_local_file("${CONFIG_CUSTOM_ASSETS_FILE}" ASSETS_LOCAL_FILE)
+        esptool_py_flash_to_partition(flash "assets" "${ASSETS_LOCAL_FILE}")
+        message(STATUS "Custom assets flash configured: ${ASSETS_LOCAL_FILE} -> assets partition")
+    elseif(CONFIG_FLASH_EXPRESSION_ASSETS)
+        set(ASSETS_NAME "expression_assets")
+        set(ASSETS_PARTITION "assets")
+        set(ASSETS_FILE "${CMAKE_BINARY_DIR}/${ASSETS_NAME}.bin")
+
+        if(EMOTE_EXTERNAL_PATH)
+            build_speaker_assets_bin("${ASSETS_PARTITION}" ${EMOTE_RESOLUTION} ${ASSETS_FILE} ${CONFIG_MMAP_FILE_NAME_LENGTH} "${EMOTE_EXTERNAL_PATH}")
+        else()
+            build_speaker_assets_bin("${ASSETS_PARTITION}" ${EMOTE_RESOLUTION} ${ASSETS_FILE} ${CONFIG_MMAP_FILE_NAME_LENGTH})
+        endif()
+        message(STATUS "Generated emote assets: ${ASSETS_FILE} -> ${ASSETS_PARTITION} partition")
+        esptool_py_flash_to_partition(flash "${ASSETS_PARTITION}" "${ASSETS_FILE}")
+    elseif(CONFIG_FLASH_NONE_ASSETS)
+        message(STATUS "Assets flashing disabled (FLASH_NONE_ASSETS)")
+    endif()
+else()
+    message(STATUS "Assets partition not found, using v1 partition table")
+endif()
