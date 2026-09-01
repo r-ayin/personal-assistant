@@ -1016,16 +1016,9 @@ if(CONFIG_IDF_TARGET_ESP32)
                              )
 endif()
 
-# Include EspVideo if target is ESP32S3 or ESP32P4
+# esp_video.cc / esp32_camera.cc removed - recording-only mode has no camera/MCP tools
 if(CONFIG_IDF_TARGET_ESP32S3 OR CONFIG_IDF_TARGET_ESP32P4)
-    list(APPEND SOURCES "boards/common/esp_video.cc"
-                        "boards/common/rndis_board.cc"
-                        )
-endif()
-
-# Include Esp32Camera if target is ESP32S3
-if(CONFIG_IDF_TARGET_ESP32S3)
-    list(APPEND SOURCES "boards/common/esp32_camera.cc")
+    list(APPEND SOURCES "boards/common/rndis_board.cc")
 endif()
 
 set(MAIN_PRIV_REQUIRES_EXTRA "")
