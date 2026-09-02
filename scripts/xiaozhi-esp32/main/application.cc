@@ -644,6 +644,11 @@ bool Application::CanEnterSleepMode() {
         return false;
     }
 
+    // 录音上传专用设备：背景音频推流期间禁止进入省电休眠（休眠会关麦克风输入并断开推流）
+    if (IsBackgroundAudioActive()) {
+        return false;
+    }
+
     if (!audio_service_.IsIdle()) {
         return false;
     }
