@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DIM_EXPLAIN, METRIC_ZH, PERSON_KIND_ZH } from "@/lib/labels-zh";
+import { DIM_EXPLAIN, METRIC_ZH, PERSON_KIND_ZH, RQA_SUB } from "@/lib/labels-zh";
 import type { PortraitMetricRow, PortraitTrait, TraitDist } from "@/lib/types";
 
 /** JSON 列解析：失败回退 null，绝不编造数值 */
@@ -74,17 +74,28 @@ export function TraitBar({ t }: { t: PortraitTrait }) {
   );
 }
 
-/** 指标行：中文名 + 怎么读 + value/置信区间/样本；eligible=0 灰显并给理由 */
+/** 指标行：中文名 + 用途 + 数值/CI/样本 + 对比随机基线的结论 + 高/低含义。
+ *  rqa 额外展开 RR/DET/ENTR/Lmax 四子量（原本就是四个量，不能压成一个数）。
+ *  eligible=0 灰显并给理由，不编数字。 */
 export function MetricRow({ m }: { m: PortraitMetricRow }) {
   const ok = m.eligible === 1;
   const zh = METRIC_ZH[m.name];
+  const nb = parseJson<Record<string, any> | null>(m.null_baseline, null);
+  const p = nb?.p_value;
+  const nullMean = nb?.null_mean;
+  const above = p != null && p < 0.05;
+  const detail = nb?.detail as Record<string, any> | undefined;
+  const ciBy = (detail?.ci_by_measure ?? {}) as Record<string, [number, number]>;
+  const pBy = (detail?.p_value_by_measure ?? {}) as Record<string, number>;
+  const nullBy = (detail?.null_mean_by_measure ?? {}) as Record<string, number>;
+
   return (
-    <div className={`py-2 border-b border-[var(--hairline)] ${ok ? "" : "opacity-45"}`}>
+    <div className={`py-3 border-b border-[var(--hairline)] ${ok ? "" : "opacity-45"}`}>
       <div className="flex items-baseline justify-between gap-4">
-        <span className="text-[13px] text-[var(--ink-700)]">
+        <span className="text-[13px] font-medium text-[var(--ink-700)]">
           {zh?.zh ?? m.name}
-          <span className="ml-2 font-mono text-[11px] text-[var(--text-weak)]">
-            {PERSON_KIND_ZH[m.subject_kind] ?? m.subject_kind}·{m.subject_id.slice(0, 14)}
+          <span className="ml-2 font-mono text-[11px] font-normal text-[var(--text-weak)]">
+            {PERSON_KIND_ZH[m.subject_kind] ?? m.subject_kind}·{m.subject_id.slice(0, 12)}
           </span>
         </span>
         <span className="shrink-0 text-right font-mono text-[12px]">
@@ -92,7 +103,7 @@ export function MetricRow({ m }: { m: PortraitMetricRow }) {
             <span className="text-[var(--ink-900)]">
               {m.value == null ? "—" : m.value.toFixed(3)}
               <span className="text-[var(--text-weak)]">
-                {" "}置信区间 [{m.ci_low?.toFixed(2) ?? "—"}, {m.ci_high?.toFixed(2) ?? "—"}] 样本 {m.n ?? 0}
+                {" "}CI [{m.ci_low?.toFixed(2) ?? "—"}, {m.ci_high?.toFixed(2) ?? "—"}] 样本 {m.n ?? 0}
               </span>
             </span>
           ) : (
@@ -100,7 +111,47 @@ export function MetricRow({ m }: { m: PortraitMetricRow }) {
           )}
         </span>
       </div>
-      {zh && <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-weak)]">{zh.explain}</p>}
+
+      {zh && <p className="mt-1 text-[11.5px] leading-relaxed text-[var(--text-dim)]">{zh.purpose}</p>}
+
+      {ok && p != null && (
+        <p className="mt-1 text-[11px] text-[var(--text-weak)]">
+          对比你自己的随机打乱基线{nullMean != null ? `（${Number(nullMean).toFixed(3)}）` : ""}：
+          p={Number(p).toFixed(3)} → {above ? "高于随机，结构真实存在" : "与随机无异，别当结论"}
+        </p>
+      )}
+      {zh && ok && (
+        <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-weak)]">
+          高={zh.high}　低={zh.low}
+        </p>
+      )}
+
+      {ok && m.name === "rqa" && detail && (
+        <div className="mt-2 space-y-1 rounded-md bg-[var(--ink-02)] p-2">
+          {(["RR", "DET", "ENTR", "Lmax"] as const).map((k) => {
+            const sub = RQA_SUB[k];
+            const ci = ciBy[k];
+            const pv = pBy[k];
+            const nm = nullBy[k];
+            return (
+              <div key={k} className="flex items-baseline justify-between gap-3">
+                <span className="text-[11.5px] text-[var(--ink-700)]">{sub?.zh ?? k}</span>
+                <span className="font-mono text-[11px] text-[var(--text-dim)]">
+                  {detail[k] == null ? "—" : Number(detail[k]).toFixed(3)}
+                  {ci ? ` CI [${ci[0]?.toFixed(2)}, ${ci[1]?.toFixed(2)}]` : ""}
+                  {nm != null ? ` 随机 ${Number(nm).toFixed(3)}` : ""}
+                  {pv != null ? ` p=${Number(pv).toFixed(3)}` : ""}
+                </span>
+              </div>
+            );
+          })}
+          {RQA_SUB.DET && (
+            <p className="text-[10.5px] leading-relaxed text-[var(--text-weak)]">
+              {RQA_SUB.RR.purpose} {RQA_SUB.DET.purpose} {RQA_SUB.ENTR.purpose} {RQA_SUB.Lmax.purpose}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
