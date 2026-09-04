@@ -539,16 +539,19 @@ def portrait_circles(limit: int = 60):
         return {"available": False}
     with c:
         people = _rows(c, """
-            SELECT p.person_id, p.display_name, p.role, p.person_kind, p.profile_card,
-                   COUNT(DISTINCT u.conv_id) convs, COUNT(*) msgs,
-                   (SELECT COALESCE(SUM(c2.user_msg), 0) FROM conversation c2
-                     WHERE c2.conv_id IN
-                       (SELECT u2.conv_id FROM utterance u2 WHERE u2.person_id = p.person_id)
-                   ) user_msgs,
-                   MIN(u.ts) first_ts, MAX(u.ts) last_ts
-            FROM person p JOIN utterance u ON u.person_id = p.person_id
-            WHERE p.person_kind IN ('person','self')
-            GROUP BY p.person_id ORDER BY user_msgs DESC, msgs DESC LIMIT ?""", (limit,))
+            SELECT * FROM (
+              SELECT p.person_id, p.display_name, p.role, p.person_kind, p.profile_card,
+                     COUNT(DISTINCT u.conv_id) convs, COUNT(*) msgs,
+                     (SELECT COALESCE(SUM(c2.user_msg), 0) FROM conversation c2
+                       WHERE c2.conv_id IN
+                         (SELECT u2.conv_id FROM utterance u2 WHERE u2.person_id = p.person_id)
+                     ) user_msgs,
+                     MIN(u.ts) first_ts, MAX(u.ts) last_ts
+              FROM person p JOIN utterance u ON u.person_id = p.person_id
+              WHERE p.person_kind IN ('person','self')
+              GROUP BY p.person_id
+            ) WHERE user_msgs > 0
+            ORDER BY user_msgs DESC, msgs DESC LIMIT ?""", (limit,))
         return {
             "available": True,
             "people": people,
