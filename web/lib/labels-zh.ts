@@ -24,10 +24,10 @@ export interface MetricZh {
 /** 19 项复杂科学指标 */
 export const METRIC_ZH: Record<string, MetricZh> = {
   signature_shares: {
-    zh: "社交签名份额",
-    purpose: "看你的注意力怎么分给不同的人：把联系的人按消息量排序，每人占多少份额。",
-    high: "曲线陡=注意力集中在少数几个人身上。",
-    low: "曲线平=撒得开，跟很多人都聊一点。",
+    zh: "社交签名·top1 份额",
+    purpose: "你消息量最大的那一个人，占你全部消息的份额（headline 值=p_top1）。下面展开 top5/基尼/HHI/归一化熵。",
+    high: "份额高=注意力集中在一个人身上（如伴侣）。",
+    low: "份额低=撒得开，没有单一主导对象。",
   },
   dunbar_layers: {
     zh: "邓巴分层断点",
@@ -66,10 +66,10 @@ export const METRIC_ZH: Record<string, MetricZh> = {
     low: "昼夜不分，什么时候都聊。",
   },
   weekly_rhythm: {
-    zh: "星期节律",
-    purpose: "一周七天的分布差异：工作驱动还是周末驱动。",
-    high: "weekday/周末差异大，生活有周节奏。",
-    low: "七天差不多，没有明显周节奏。",
+    zh: "工作日/周末比值",
+    purpose: "工作日日均消息量 ÷ 周末日均消息量（headline 值）。下面展开星期节律强度与两个日均。",
+    high: ">1=工作日驱动（周末几乎不聊）；34 这种极端值=周末基本沉默。",
+    low: "<1=周末驱动（周末聊得更多）；≈1=工作日周末无差异。",
   },
   contact_diversity: {
     zh: "联系人多样性",
@@ -178,6 +178,29 @@ export const DIM_EXPLAIN: Record<string, string> = {
   big5_O: "高=更爱新经验与新想法；低=更偏好熟悉与确定。",
   big5_A: "高=更信任、体谅、合作；低=更质疑、竞争。",
   big5_C: "高=更有条理、守承诺、按计划；低=更随性。",
+};
+
+/** headline 值身份不明或本身是多量压缩的指标：展开 detail 里的子量 */
+export const METRIC_SUBS: Record<string, { key: string; zh: string }[]> = {
+  rqa: [
+    { key: "RR", zh: RQA_SUB.RR.zh },
+    { key: "DET", zh: RQA_SUB.DET.zh },
+    { key: "ENTR", zh: RQA_SUB.ENTR.zh },
+    { key: "Lmax", zh: RQA_SUB.Lmax.zh },
+  ],
+  signature_shares: [
+    { key: "p_top1", zh: "top1 份额（headline）" },
+    { key: "p_top5", zh: "top5 份额" },
+    { key: "gini", zh: "基尼系数（不平等度）" },
+    { key: "hhi", zh: "HHI 集中度" },
+    { key: "H_norm", zh: "归一化熵（0=只跟一人，1=完全均匀）" },
+  ],
+  weekly_rhythm: [
+    { key: "workday_weekend_ratio", zh: "工作日/周末比值（headline）" },
+    { key: "dow_strength", zh: "星期节律强度" },
+    { key: "workday_mean", zh: "工作日日均消息" },
+    { key: "weekend_mean", zh: "周末日均消息" },
+  ],
 };
 
 export const TASK_TYPE_ZH: Record<string, string> = {

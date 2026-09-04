@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { DIM_EXPLAIN, METRIC_ZH, PERSON_KIND_ZH, RQA_SUB } from "@/lib/labels-zh";
+import { DIM_EXPLAIN, METRIC_SUBS, METRIC_ZH, PERSON_KIND_ZH } from "@/lib/labels-zh";
 import type { PortraitMetricRow, PortraitTrait, TraitDist } from "@/lib/types";
 
 /** JSON 列解析：失败回退 null，绝不编造数值 */
@@ -126,30 +126,35 @@ export function MetricRow({ m }: { m: PortraitMetricRow }) {
         </p>
       )}
 
-      {ok && m.name === "rqa" && detail && (
+      {ok && m.ci_low != null && m.ci_high != null && Math.abs(m.ci_high - m.ci_low) < 1e-9 && (
+        <p className="mt-1 text-[11px] text-[var(--text-weak)]">
+          CI 不可用：留一块刀切不改变这个统计量，区间退化为零宽，别当成"完全确定"。
+        </p>
+      )}
+
+      {ok && detail && (METRIC_SUBS[m.name] ?? []).length > 0 && (
         <div className="mt-2 space-y-1 rounded-md bg-[var(--ink-02)] p-2">
-          {(["RR", "DET", "ENTR", "Lmax"] as const).map((k) => {
-            const sub = RQA_SUB[k];
-            const ci = ciBy[k];
-            const pv = pBy[k];
-            const nm = nullBy[k];
+          {(METRIC_SUBS[m.name] ?? []).map(({ key, zh: subZh }) => {
+            const ci = ciBy[key];
+            const pv = pBy[key];
+            const nm = nullBy[key];
+            const zeroCi = ci != null && Math.abs(ci[1] - ci[0]) < 1e-9;
             return (
-              <div key={k} className="flex items-baseline justify-between gap-3">
-                <span className="text-[11.5px] text-[var(--ink-700)]">{sub?.zh ?? k}</span>
+              <div key={key} className="flex items-baseline justify-between gap-3">
+                <span className="text-[11.5px] text-[var(--ink-700)]">{subZh}</span>
                 <span className="font-mono text-[11px] text-[var(--text-dim)]">
-                  {detail[k] == null ? "—" : Number(detail[k]).toFixed(3)}
-                  {ci ? ` CI [${ci[0]?.toFixed(2)}, ${ci[1]?.toFixed(2)}]` : ""}
+                  {detail[key] == null ? "—" : Number(detail[key]).toFixed(3)}
+                  {ci
+                    ? zeroCi
+                      ? " CI 不可用"
+                      : ` CI [${ci[0]?.toFixed(2)}, ${ci[1]?.toFixed(2)}]`
+                    : ""}
                   {nm != null ? ` 随机 ${Number(nm).toFixed(3)}` : ""}
                   {pv != null ? ` p=${Number(pv).toFixed(3)}` : ""}
                 </span>
               </div>
             );
           })}
-          {RQA_SUB.DET && (
-            <p className="text-[10.5px] leading-relaxed text-[var(--text-weak)]">
-              {RQA_SUB.RR.purpose} {RQA_SUB.DET.purpose} {RQA_SUB.ENTR.purpose} {RQA_SUB.Lmax.purpose}
-            </p>
-          )}
         </div>
       )}
     </div>
