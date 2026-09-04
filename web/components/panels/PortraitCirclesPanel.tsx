@@ -58,7 +58,7 @@ export default function PortraitCirclesPanel({
 
       {!!layers.length && (
         <section>
-          <SectionHeader title="社交签名 / Dunbar 分层" subtitle="份额分布断点；eligible=0 的行给理由" />
+          <SectionHeader title="社交签名 / 邓巴分层" subtitle="份额分布断点；样本不足的行灰显并给理由" />
           <div className="glass-card p-6 cv-auto">
             {layers.map((m, i) => <MetricRow key={`${m.name}-${i}`} m={m} />)}
           </div>

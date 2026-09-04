@@ -516,10 +516,15 @@ def portrait_self():
             "traits": _rows(c, "SELECT dimension,dist,promoted,n_independent_conv,is_proxy "
                                "FROM trait WHERE subject_id='self' ORDER BY promoted DESC, "
                                "n_independent_conv DESC"),
-            "goals": _rows(c, "SELECT * FROM goal WHERE subject_id='self' "
-                              "ORDER BY last_active_at DESC LIMIT 30"),
-            "tasks": _rows(c, "SELECT * FROM task WHERE subject_id='self' AND "
-                              "status IN ('inbox','active','blocked') ORDER BY updated_at DESC"),
+            "goals": _rows(c, """SELECT *, CAST(julianday('now') - julianday(last_active_at) AS INT) stale_days
+                                 FROM goal WHERE subject_id='self'
+                                 ORDER BY last_active_at DESC LIMIT 30"""),
+            "tasks": _rows(c, """SELECT t.*, u.ts source_ts,
+                                        CAST(julianday('now') - julianday(u.ts) AS INT) stale_days
+                                 FROM task t LEFT JOIN utterance u ON u.id = t.utterance_id
+                                 WHERE t.subject_id='self'
+                                   AND t.status IN ('inbox','active','blocked')
+                                 ORDER BY stale_days ASC"""),
             "values": _rows(c, "SELECT * FROM value WHERE subject_id='self' "
                                "ORDER BY recurrence_count DESC LIMIT 20"),
             "affect": _rows(c, "SELECT * FROM affect_profile WHERE subject_id='self'"),

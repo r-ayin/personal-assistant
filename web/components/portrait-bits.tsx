@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DIM_EXPLAIN, METRIC_ZH, PERSON_KIND_ZH } from "@/lib/labels-zh";
 import type { PortraitMetricRow, PortraitTrait, TraitDist } from "@/lib/types";
 
 /** JSON 列解析：失败回退 null，绝不编造数值 */
@@ -35,7 +36,7 @@ const DIM_LABEL: Record<string, string> = {
   big5_C: "尽责",
 };
 
-/** 特质分布条：mean±sd，标 n 与是否升格；未升格视觉弱化 */
+/** 特质分布条：mean±sd，标观测数与是否升格；未升格视觉弱化 */
 export function TraitBar({ t }: { t: PortraitTrait }) {
   const d = parseJson<TraitDist | null>(t.dist, null);
   const promoted = t.promoted === 1;
@@ -53,7 +54,7 @@ export function TraitBar({ t }: { t: PortraitTrait }) {
         <span className="font-mono text-[11px] text-[var(--text-weak)]">
           {mean == null
             ? "不可解析"
-            : `${mean >= 0 ? "+" : ""}${mean.toFixed(2)} ± ${(sd ?? 0).toFixed(2)} · n=${d?.n_observations ?? 0} · 会话${t.n_independent_conv}`}
+            : `${mean >= 0 ? "+" : ""}${mean.toFixed(2)} ± ${(sd ?? 0).toFixed(2)} · 观测 ${d?.n_observations ?? 0} · 独立会话 ${t.n_independent_conv}`}
         </span>
       </div>
       <div className="relative mt-1 h-[6px] rounded-full bg-[var(--ink-06)]">
@@ -62,38 +63,44 @@ export function TraitBar({ t }: { t: PortraitTrait }) {
         <div className="absolute top-[-2px] h-[10px] w-[2px] bg-[var(--cinnabar)]"
           style={{ left: `${pos}%` }} />
       </div>
-      <p className="mt-1 text-[11px] text-[var(--text-weak)]">
+      <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-weak)]">
+        {DIM_EXPLAIN[t.dimension] ?? ""}
+        {" "}
         {promoted
-          ? t.is_proxy === 1 ? "代理推断，非量表实测" : ""
-          : `独立会话 ${t.n_independent_conv}/3，未升格为稳定特质`}
+          ? t.is_proxy === 1 ? "· 代理推断，非量表实测" : ""
+          : `· 独立会话 ${t.n_independent_conv}/3，未升格为稳定特质`}
       </p>
     </div>
   );
 }
 
-/** 指标行：value + CI + n；eligible=0 灰显并给理由 */
+/** 指标行：中文名 + 怎么读 + value/置信区间/样本；eligible=0 灰显并给理由 */
 export function MetricRow({ m }: { m: PortraitMetricRow }) {
   const ok = m.eligible === 1;
+  const zh = METRIC_ZH[m.name];
   return (
-    <div className={`flex items-baseline justify-between gap-4 py-2 border-b border-[var(--hairline)] ${ok ? "" : "opacity-45"}`}>
-      <div className="min-w-0">
-        <span className="text-[13px] text-[var(--ink-700)]">{m.name}</span>
-        <span className="ml-2 font-mono text-[11px] text-[var(--text-weak)]">
-          {m.subject_kind}/{m.subject_id.slice(0, 18)}
+    <div className={`py-2 border-b border-[var(--hairline)] ${ok ? "" : "opacity-45"}`}>
+      <div className="flex items-baseline justify-between gap-4">
+        <span className="text-[13px] text-[var(--ink-700)]">
+          {zh?.zh ?? m.name}
+          <span className="ml-2 font-mono text-[11px] text-[var(--text-weak)]">
+            {PERSON_KIND_ZH[m.subject_kind] ?? m.subject_kind}·{m.subject_id.slice(0, 14)}
+          </span>
+        </span>
+        <span className="shrink-0 text-right font-mono text-[12px]">
+          {ok ? (
+            <span className="text-[var(--ink-900)]">
+              {m.value == null ? "—" : m.value.toFixed(3)}
+              <span className="text-[var(--text-weak)]">
+                {" "}置信区间 [{m.ci_low?.toFixed(2) ?? "—"}, {m.ci_high?.toFixed(2) ?? "—"}] 样本 {m.n ?? 0}
+              </span>
+            </span>
+          ) : (
+            <span className="text-[var(--text-weak)]">{m.ineligible_reason || "样本不足"}</span>
+          )}
         </span>
       </div>
-      <div className="shrink-0 text-right font-mono text-[12px]">
-        {ok ? (
-          <span className="text-[var(--ink-900)]">
-            {m.value == null ? "—" : m.value.toFixed(3)}
-            <span className="text-[var(--text-weak)]">
-              {" "}[{m.ci_low?.toFixed(2) ?? "—"}, {m.ci_high?.toFixed(2) ?? "—"}] n={m.n ?? 0}
-            </span>
-          </span>
-        ) : (
-          <span className="text-[var(--text-weak)]">{m.ineligible_reason || "样本不足"}</span>
-        )}
-      </div>
+      {zh && <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-weak)]">{zh.explain}</p>}
     </div>
   );
 }

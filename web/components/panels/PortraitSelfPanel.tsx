@@ -3,12 +3,10 @@
 import { api } from "@/lib/api";
 import { HonestEmpty, TraitBar, parseJson, useAsync } from "@/components/portrait-bits";
 import { SectionHeader } from "@/components/ui";
+import {
+  GROWTH_ZH, LEVEL_ZH, SCHWARTZ_ZH, STALE_GOAL_DAYS, STALE_TASK_DAYS, TASK_TYPE_ZH,
+} from "@/lib/labels-zh";
 import type { PortraitGrowth } from "@/lib/types";
-
-const LEVEL_LABEL: Record<string, string> = {
-  runway: "下一步", project: "项目", area: "责任领域",
-  goal_1_2y: "1–2 年目标", vision_3_5y: "3–5 年愿景", purpose: "目的",
-};
 
 /** 「我」tab：七维自我画像。全部来自 /portrait/self，空则诚实空态。 */
 export default function PortraitSelfPanel() {
@@ -67,52 +65,102 @@ export default function PortraitSelfPanel() {
         </section>
       )}
 
-      {!!goals.length && (
-        <section>
-          <SectionHeader title="目标" subtitle="GTD Horizons + possible selves" />
-          <div className="glass-card p-6 space-y-3 cv-auto">
-            {goals.map((g) => (
-              <div key={g.id} className="flex items-baseline justify-between gap-4 border-b border-[var(--hairline)] pb-2">
-                <span className="text-[13.5px] text-[var(--ink-900)]">{g.text_gist}</span>
-                <span className="shrink-0 font-mono text-[11px] text-[var(--text-weak)]">
-                  {LEVEL_LABEL[g.level] ?? g.level}
-                  {g.possible_self_type ? ` · ${g.possible_self_type}` : ""}
-                  {g.commitment_evidence_count ? ` · 证据${g.commitment_evidence_count}` : ""}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      {!!goals.length && (() => {
+        const active = goals.filter((g) => (g.stale_days ?? 0) <= STALE_GOAL_DAYS);
+        const stale = goals.filter((g) => (g.stale_days ?? 0) > STALE_GOAL_DAYS);
+        return (
+          <>
+            {!!active.length && (
+              <section>
+                <SectionHeader title="目标" subtitle={`近 ${STALE_GOAL_DAYS} 天内仍活跃 · 中文层级标签`} />
+                <div className="glass-card p-6 space-y-3 cv-auto">
+                  {active.map((g) => (
+                    <div key={g.id} className="flex items-baseline justify-between gap-4 border-b border-[var(--hairline)] pb-2">
+                      <span className="text-[13.5px] text-[var(--ink-900)]">{g.text_gist}</span>
+                      <span className="shrink-0 font-mono text-[11px] text-[var(--text-weak)]">
+                        {LEVEL_ZH[g.level] ?? g.level}
+                        {g.possible_self_type ? ` · ${g.possible_self_type}` : ""}
+                        {g.commitment_evidence_count ? ` · 证据${g.commitment_evidence_count}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+            {!!stale.length && (
+              <section className="opacity-55">
+                <SectionHeader
+                  title={`过时目标（${stale.length}）`}
+                  subtitle={`最后活跃超过 ${STALE_GOAL_DAYS} 天，不再当作现状复述`}
+                />
+                <div className="glass-card p-6 space-y-2 cv-auto">
+                  {stale.map((g) => (
+                    <div key={g.id} className="flex items-baseline justify-between gap-4">
+                      <span className="text-[12.5px] text-[var(--text-dim)] line-through decoration-[var(--ink-18)]">
+                        {g.text_gist}
+                      </span>
+                      <span className="shrink-0 font-mono text-[11px] text-[var(--text-weak)]">
+                        过时 {g.stale_days} 天 · {LEVEL_ZH[g.level] ?? g.level}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
+        );
+      })()}
 
-      {!!tasks.length && (
-        <section>
-          <SectionHeader title="未闭环任务" subtitle="GTD 类型； Zeigarnik 标记 = 悬而未决" />
-          <div className="glass-card p-6 space-y-2 cv-auto">
-            {tasks.map((t) => (
-              <div key={t.id} className="flex items-baseline justify-between gap-4">
-                <span className="text-[13px] text-[var(--ink-700)]">
-                  {t.zeigarnik_flag === 1 && <span className="mr-1 text-[var(--cinnabar)]">◦</span>}
-                  {t.raw_text}
-                </span>
-                <span className="shrink-0 font-mono text-[11px] text-[var(--text-weak)]">
-                  {t.type}{t.committed_to_whom ? ` · 对 ${t.committed_to_whom}` : ""}
-                </span>
-              </div>
-            ))}
+      {!!tasks.length && (() => {
+        const active = tasks.filter((t) => (t.stale_days ?? 0) <= STALE_TASK_DAYS);
+        const stale = tasks.filter((t) => (t.stale_days ?? 0) > STALE_TASK_DAYS);
+        const row = (t: (typeof tasks)[number], dim: boolean) => (
+          <div key={t.id} className="flex items-baseline justify-between gap-4">
+            <span className={`text-[13px] ${dim ? "text-[var(--text-dim)] line-through decoration-[var(--ink-18)]" : "text-[var(--ink-700)]"}`}>
+              {t.zeigarnik_flag === 1 && !dim && <span className="mr-1 text-[var(--cinnabar)]">◦</span>}
+              {t.raw_text}
+            </span>
+            <span className="shrink-0 font-mono text-[11px] text-[var(--text-weak)]">
+              {TASK_TYPE_ZH[t.type] ?? t.type}
+              {t.committed_to_whom ? ` · 对 ${t.committed_to_whom}` : ""}
+              {t.source_ts ? ` · ${(t.source_ts || "").slice(5, 10)}` : ""}
+              {dim ? ` · 过时 ${t.stale_days} 天` : ""}
+            </span>
           </div>
-        </section>
-      )}
+        );
+        return (
+          <>
+            {!!active.length && (
+              <section>
+                <SectionHeader
+                  title="未闭环待办"
+                  subtitle={`原话在 ${STALE_TASK_DAYS} 天内 · ◦ = 悬而未决（Zeigarnik）`}
+                />
+                <div className="glass-card p-6 space-y-2 cv-auto">{active.map((t) => row(t, false))}</div>
+              </section>
+            )}
+            {!!stale.length && (
+              <section className="opacity-55">
+                <SectionHeader
+                  title={`过时待办（${stale.length}）`}
+                  subtitle={`原话超过 ${STALE_TASK_DAYS} 天，不再当作当前待办`}
+                />
+                <div className="glass-card p-6 space-y-2 cv-auto">{stale.map((t) => row(t, true))}</div>
+              </section>
+            )}
+          </>
+        );
+      })()}
 
       {!!values.length && (
         <section>
-          <SectionHeader title="价值观 / 理想" subtitle="Schwartz 域；跨会话复现才计入" />
+          <SectionHeader title="价值观 / 理想" subtitle="Schwartz 价值域（中文）；跨会话复现才计入" />
           <div className="glass-card p-6 space-y-2 cv-auto">
             {values.map((v) => (
               <div key={v.id} className="flex items-baseline justify-between gap-4">
                 <span className="text-[13px] text-[var(--ink-700)]">{v.statement}</span>
                 <span className="shrink-0 font-mono text-[11px] text-[var(--text-weak)]">
-                  {v.schwartz_domain || "—"} · 复现{v.recurrence_count}
+                  {SCHWARTZ_ZH[v.schwartz_domain] ?? v.schwartz_domain ?? "—"} · 跨会话复现 {v.recurrence_count} 次
                 </span>
               </div>
             ))}
@@ -154,9 +202,11 @@ export default function PortraitSelfPanel() {
               const score = hist[0]?.proxy_score;
               return (
                 <div key={g.id} className="flex items-baseline justify-between gap-3">
-                  <span className="text-[13px] text-[var(--ink-700)]">{g.dimension}</span>
+                  <span className="text-[13px] text-[var(--ink-700)]">
+                    {GROWTH_ZH[g.dimension] ?? g.dimension}
+                  </span>
                   <span className="font-mono text-[12px] text-[var(--text-weak)]">
-                    {score == null ? "无数据" : score.toFixed(2)} · 代理
+                    {score == null ? "无数据" : `${score.toFixed(2)} · 行为代理`}
                   </span>
                 </div>
               );

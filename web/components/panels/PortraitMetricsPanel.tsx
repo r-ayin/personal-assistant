@@ -31,7 +31,7 @@ export default function PortraitMetricsPanel() {
     return (
       <HonestEmpty
         title="还没有任何指标"
-        hint="18 项复杂科学指标都带 n / 置信区间 / 零假设基线；样本不足的会灰显并说明理由，而不是编一个数"
+        hint="19 项复杂科学指标都带样本量 / 置信区间 / 零假设基线；样本不足的会灰显并说明理由，而不是编一个数"
       />
     );
   }
@@ -42,7 +42,7 @@ export default function PortraitMetricsPanel() {
         <section key={kind}>
           <SectionHeader
             title={KIND_LABEL[kind] ?? kind}
-            subtitle={`${rows.length} 项 · eligible ${rows.filter((r) => r.eligible === 1).length}`}
+            subtitle={`共 ${rows.length} 项 · 可出数 ${rows.filter((r) => r.eligible === 1).length} 项`}
           />
           <div className="glass-card p-6 cv-auto">
             {rows.map((m, i) => <MetricRow key={`${m.subject_id}-${m.name}-${i}`} m={m} />)}

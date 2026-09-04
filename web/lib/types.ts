@@ -268,6 +268,8 @@ export interface PortraitGoal {
   possible_self_type?: string;
   first_seen_at?: string;
   last_active_at?: string;
+  /** 距今天数（后端按 last_active_at 计算）；超过阈值视为过时 */
+  stale_days?: number;
 }
 
 /** task 表整行（GTD 类型） */
@@ -285,6 +287,10 @@ export interface PortraitTask {
   reopen_count?: number;
   created_at?: string;
   updated_at?: string;
+  /** 原话时间（join utterance.ts）；task.updated_at 是抽取时间，不可用于过时判断 */
+  source_ts?: string;
+  /** 距今天数（后端按 source_ts 计算） */
+  stale_days?: number;
 }
 
 /** value 表整行（Schwartz 价值观） */

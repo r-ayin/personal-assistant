@@ -3,6 +3,7 @@
 import { api } from "@/lib/api";
 import { HonestEmpty, MetricRow, TraitBar, parseJson, useAsync } from "@/components/portrait-bits";
 import { SectionHeader, Tag } from "@/components/ui";
+import { ALIAS_SPACE_ZH, SCHWARTZ_ZH } from "@/lib/labels-zh";
 import type { PersonMoment } from "@/lib/types";
 
 function MomentCard({ m }: { m: PersonMoment }) {
@@ -65,7 +66,7 @@ export default function PortraitPersonPanel({ personId }: { personId: string | n
           <div className="mt-3 flex flex-wrap gap-2">
             {aliases.map((a, i) => (
               <span key={`${a.alias_space}-${a.label}-${i}`} className="rounded-full bg-[var(--ink-06)] px-2.5 py-[3px] font-mono text-[11px] text-[var(--text-dim)]">
-                {a.label}<span className="ml-1 text-[var(--text-weak)]">({a.alias_space}·{a.evidence_count})</span>
+                {a.label}<span className="ml-1 text-[var(--text-weak)]">({ALIAS_SPACE_ZH[a.alias_space] ?? a.alias_space}·{a.evidence_count} 条)</span>
               </span>
             ))}
           </div>
@@ -89,7 +90,7 @@ export default function PortraitPersonPanel({ personId }: { personId: string | n
               <div key={v.id} className="flex items-baseline justify-between gap-4">
                 <span className="text-[13px] text-[var(--ink-700)]">{v.statement}</span>
                 <span className="shrink-0 font-mono text-[11px] text-[var(--text-weak)]">
-                  {v.schwartz_domain || "—"} · 复现{v.recurrence_count}
+                  {SCHWARTZ_ZH[v.schwartz_domain] ?? v.schwartz_domain ?? "—"} · 复现{v.recurrence_count}
                 </span>
               </div>
             ))}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api } from "@/lib/api";
 import { HonestEmpty, useAsync } from "@/components/portrait-bits";
 import { SectionHeader } from "@/components/ui";
+import { SOURCE_ZH } from "@/lib/labels-zh";
 
 /**
  * 检索 tab：混合检索（FTS5 bigram + 向量网关 + RRF + GA 三维终排）。
@@ -60,7 +61,7 @@ export default function MemorySearchPanel() {
                     <span>{r.ts.slice(0, 16)}</span>
                     {r.sources.map((s) => (
                       <span key={s} className="rounded-full bg-[var(--ind-06)] px-2 py-[2px] text-[var(--indigo)]">
-                        {s}
+                        {SOURCE_ZH[s] ?? s}
                       </span>
                     ))}
                     <span className="ml-auto">{r.score.toFixed(3)}</span>
