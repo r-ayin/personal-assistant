@@ -93,24 +93,9 @@ def _seg_id_from_evidence(ev: str) -> str:
 
 
 def verify_memories() -> tuple[int, int]:
-    kept = deleted = 0
-    for m in storage.memories_all():
-        seg_id = m.get("segment_id") or _seg_id_from_evidence(m.get("evidence", ""))
-        src = storage.segment_get(seg_id) if seg_id else None
-        if not src:
-            storage.delete_memory(m["id"])
-            deleted += 1
-            continue
-        content = m.get("content", "") or ""
-        src_norm = _norm(src.get("text", ""))
-        bigrams = {content[i:i + 2] for i in range(len(content) - 1)}
-        grounded = any(bg and bg in src_norm for bg in bigrams)
-        if not grounded:
-            storage.delete_memory(m["id"])
-            deleted += 1
-        else:
-            kept += 1
-    return kept, deleted
+    """记忆反幻觉复查已由融合记忆系统自带（wiki bigram 落地 + verify_grounding 溯源）。
+    本地旧记忆表不再使用；保留函数供管线兼容，恒返回 (0, 0)。"""
+    return 0, 0
 
 
 def run_all() -> dict:

@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import re
 
-from . import distill, memory, storage
+from . import memory_bridge, storage
 from .llm import get_llm
 from .web import get_searcher
 
@@ -20,13 +20,13 @@ SYSTEM_RECOMMEND = """[TASK:RECOMMEND]
 def recommend(kind: str = "book", query: str = "", llm=None, n: int = 5) -> list[dict]:
     """联网搜真实结果 → LLM 挑 → 反幻觉过滤。kind∈{book,movie,action}。"""
     llm = llm or get_llm()
-    profile = distill.current_profile()
+    profile = memory_bridge.current_profile()
     q = query or _first_nonempty(profile) or "个人成长"
     results = get_searcher().search(f"{kind} 推荐 {q}", n=10)
     if not results:
         print("[recommend] 无联网搜索结果（离线/受限）→ 不返回，不写死")
         return []
-    mems = memory.search(q, k=5) if q else []
+    mems = memory_bridge.search(q, k=5) if q else []
     mem_json = [{"id": h["memory"].get("id"), "kind": h["memory"].get("kind"),
                  "content": h["memory"].get("content")} for h in mems]
     user = (f"Persona (JSON):\n{json.dumps(profile, ensure_ascii=False)}\n"
@@ -57,8 +57,8 @@ def _norm(s: str) -> str:
 
 def grounded(recs: list[dict], results: list[dict] | None = None) -> list[dict]:
     """item 须 token 落地真实搜索结果；based_on 须引 persona 非空维度 或 result:<idx>。"""
-    from .distill import DIMENSIONS
-    profile = distill.current_profile()
+    from .memory_bridge import DIMENSIONS
+    profile = memory_bridge.current_profile()
     res_titles = [_norm(r.get("title", "")) for r in (results or [])]
     kept = []
     for r in recs:

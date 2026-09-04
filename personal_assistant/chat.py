@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from threading import Lock
 
-from . import assistant_personality, config, distill, memory, recall, scenes, storage
+from . import assistant_personality, config, memory_bridge, storage
 from .llm import get_llm, get_embedder
 
 
@@ -234,12 +234,12 @@ class Assistant:
         perception: list[dict] | None = None,
     ) -> str:
         """L3 稳定层：低频数据 canonical 序列化，动态数据绝不进入 system。"""
-        profile = distill.current_profile()
+        profile = memory_bridge.current_profile()
         behavior = assistant_personality.render_prompt(assistant_personality.current())
-        narrative = storage.latest_narrative()
+        narrative = memory_bridge.latest_narrative()
         narrative_block = f"\n\n用户叙事档案：\n{narrative}" if narrative else ""
         try:
-            nav = scenes.navigation()
+            nav = memory_bridge.navigation()
         except Exception:
             nav = ""
         nav_block = f"\n\n活跃场景导航（按热度）：\n{nav}" if nav else ""
@@ -314,13 +314,13 @@ class Assistant:
     def _recall_context(self, cleaned: str) -> tuple[list[dict], list[dict], list[str], list[dict]]:
         hits = None
         try:
-            rr = recall.hybrid_recall(cleaned, embedder=self.embedder)
+            rr = memory_bridge.hybrid_recall(cleaned, embedder=self.embedder)
             if rr.items:
                 hits = [{"memory": it["memory"], "score": it["score"]} for it in rr.items]
         except Exception:
             hits = None
         if hits is None:
-            hits = memory.search(cleaned, k=5, embedder=self.embedder)
+            hits = memory_bridge.search(cleaned, k=5, embedder=self.embedder)
         perception = recent_perception_segments(limit=3, minutes_back=5)
         web_results = self._web_search_results(cleaned)
         evidence = [h["memory"]["id"] for h in hits]

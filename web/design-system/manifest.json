@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "od-design-system-project/v1",
+  "id": "growth-rings-ink",
+  "name": "年轮 · 墨迹 Growth Rings & Ink",
+  "category": "Personal Memory Organism — Ink & Growth Rings",
+  "description": "个人助手「生命记忆」设计系统 v4：瓷白纸上以松烟墨绘制的年轮。记忆不是数据库，是活着的有机体——一圈年轮 = 一段人生时期，环宽 = 记忆密度，同心层级 = 关系亲疏，朱砂 = 落印。动效合约「生长与断裂」：墨线自生长、spring 过冲、scroll-driven 编排；亮底上冲击力来自线条与对比而非辉光。token 单一真源是 app/globals.css。",
+  "source": {
+    "type": "bundled",
+    "origin": "个人助手项目自有设计合约（web/design-system/DESIGN.md v4，2026-09-01 年轮·墨迹亮色版）"
+  },
+  "files": {
+    "design": "DESIGN.md",
+    "tokens": "tokens.css",
+    "tailwind": "tailwind-v4.css",
+    "components": "components.html"
+  },
+  "usage": "USAGE.md",
+  "craft": {
+    "applies": [],
+    "suggested": ["color", "accessibility-baseline", "motion-expressive"],
+    "exemptions": []
+  }
+}

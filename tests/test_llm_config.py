@@ -285,29 +285,16 @@ def test_base_detailed_fallback_and_message_history_capability():
 
     assert llm.LLMClient.supports_message_history is False
     assert llm.StubLLM.supports_message_history is False
-    assert llm.MiniCPMOLLM.supports_message_history is False
     assert llm.OpenAICompatLLM.supports_message_history is True
     assert llm.AnthropicProxyLLM.supports_message_history is True
 
 
-def test_stub_and_minicpm_detailed_fallbacks_use_legacy_chat():
+def test_stub_detailed_fallbacks_use_legacy_chat():
     stub = llm.StubLLM()
     stub_result = stub.chat_detailed("sys", "hello")
     assert isinstance(stub_result, llm.LLMResult)
     assert stub_result.text == stub.chat("sys", "hello")
     assert stub_result.input_tokens is None
-
-    calls = []
-
-    def requester(method, payload):
-        calls.append((method, payload))
-        return {"text": "local answer"}
-
-    minicpm = llm.MiniCPMOLLM(requester=requester)
-    minicpm_result = minicpm.chat_detailed("sys", "hello")
-    assert minicpm_result.text == "local answer"
-    assert minicpm_result.provider is None
-    assert calls[0][0] == "ask"
 
 
 def run() -> bool:

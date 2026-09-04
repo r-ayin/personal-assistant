@@ -1,4 +1,4 @@
-"""api.py — FastAPI 控制端（含 WS 骨干 + 背景音频收集）。"""
+"""api.py — FastAPI 控制端（录音上传 + 文字聊天 + 记忆系统）。"""
 from __future__ import annotations
 import asyncio
 import logging
@@ -12,111 +12,16 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import assistant_personality, barrage, config, storage, memory, distill, proactive, chat, ingest, calendar, reminders, speaker
-from . import auth, ws_manager, xiaozhi_server, audio_ws
-from .omni_perception import PerceptionProcessor
-from .omni_service import get_omni_service
+from . import assistant_personality, config, storage, memory_bridge, proactive, chat, ingest, calendar, reminders, speaker
+from . import auth
 
 log = logging.getLogger("pa.api")
-omni_processor = PerceptionProcessor()
-_api_loop: asyncio.AbstractEventLoop | None = None
-
-_BARRAGE_SOURCE_EVENTS = {
-    ws_manager.EV_REMINDER,
-    ws_manager.EV_INTERVENTION,
-    ws_manager.EV_ASSISTANT_MESSAGE,
-    ws_manager.EV_GAME_BARRAGE,
-    ws_manager.EV_COURSE_NOTE,
-}
-
-
-async def _broadcast_business_event(event_type: str, payload: dict) -> None:
-    await ws_manager.manager.broadcast(event_type, payload)
-    if event_type in _BARRAGE_SOURCE_EVENTS:
-        await barrage.publish(event_type, payload)
-
-
-async def _handle_omni_event(event: dict) -> None:
-    for event_type, payload in omni_processor.handle(event):
-        await _broadcast_business_event(event_type, payload)
-
-
-def _bridge_omni_event(event: dict) -> None:
-    loop = _api_loop
-    if loop and loop.is_running():
-        asyncio.run_coroutine_threadsafe(_handle_omni_event(event), loop)
-
-
-# ── 简陋 TCP 音频服务（替代 xiaozhi_server）───────────────────
-# ESP32 v33 固件通过原始 TCP 发送二进制帧：1B type + 4B LE length + payload
-# type=0 PCM | type=1 segment_end | type=2 ping
-
-async def _tcp_audio_handler(reader, writer):
-    addr = writer.get_extra_info('peername')
-    print(f"[tcp] CONNECTED {addr}", flush=True)
-    import struct
-    buf = bytearray()
-    segm = audio_ws._BgVad()
-    assistant = chat.assistant_for(f"audio-tcp:{addr}")
-    seg_count = 0
-    try:
-        while True:
-            chunk = await asyncio.wait_for(reader.read(65536), timeout=300)
-            if not chunk:
-                break
-            buf.extend(chunk)
-            print(f"[tcp] RECV {len(chunk)}B from {addr}", flush=True)
-            while len(buf) >= 5:
-                t = buf[0]
-                flen = struct.unpack('<I', buf[1:5])[0]
-                if flen > 65536:
-                    buf.clear(); break
-                if len(buf) < 5 + flen:
-                    print(f"[tcp] WAIT type={t} need={5+flen}B have={len(buf)}B", flush=True)
-                    break
-                payload = bytes(buf[5:5+flen])
-                buf = buf[5+flen:]
-                if t == 0:  # PCM
-                    seg_count += 1
-                    for seg in segm.feed(payload):
-                        await audio_ws._save_and_detect(seg, config.inbox_dir(), assistant)
-                elif t == 1:  # segment end
-                    for seg in segm.flush():
-                        await audio_ws._save_and_detect(seg, config.inbox_dir(), assistant)
-                elif t == 2:  # ping
-                    writer.write(b'\x02'); await writer.drain()
-    except (asyncio.TimeoutError, ConnectionResetError) as e:
-        print(f"[tcp] CLOSED {addr}: {e}", flush=True)
-    except Exception as e:
-        print(f"[tcp] ERROR {addr}: {e}", flush=True)
-    try:
-        writer.close()
-    except Exception:
-        pass
-
-async def _start_tcp_audio(host="0.0.0.0", port=8004):
-    srv = await asyncio.start_server(_tcp_audio_handler, host, port)
-    print(f"[tcp_audio] ON {host}:{port}", flush=True)
-    async with srv:
-        await srv.serve_forever()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """启动后台巡检；ESP32 v38+ 用 /ws/audio WebSocket，不再开 TCP 8004。"""
-    global _api_loop
-    _api_loop = asyncio.get_running_loop()
-    service = get_omni_service()
-    add_event_sink = getattr(service, "add_event_sink", None)
-    if callable(add_event_sink):
-        add_event_sink(_bridge_omni_event)
-    if config.get("llm.backend", "stub") == "minicpm_o":
-        await asyncio.to_thread(service.acquire_sync, "chat-backend")
-    ws_manager.manager.start_heartbeat()
+    """启动后台巡检（提醒 + 主动干预）。"""
     stop = asyncio.Event()
-    # 后台预热 ASR 模型（faster_whisper 首载 ~8s，预热后首句语音响应快很多）
-    from . import xiaozhi_server
-    asyncio.ensure_future(asyncio.to_thread(xiaozhi_server.warmup_asr))
 
     async def _patrol():
         reminder_poll = 60.0
@@ -124,14 +29,10 @@ async def lifespan(app: FastAPI):
         last_proactive = 0.0
         while not stop.is_set():
             try:
-                fired_r = await asyncio.to_thread(_collect_due_reminders)
-                for item in fired_r:
-                    await _broadcast_business_event(ws_manager.EV_REMINDER, item)
+                await asyncio.to_thread(_collect_due_reminders)
                 now = asyncio.get_event_loop().time()
                 if now - last_proactive >= proactive_interval:
-                    fired_i = await asyncio.to_thread(_collect_proactive)
-                    for item in fired_i:
-                        await _broadcast_business_event(ws_manager.EV_INTERVENTION, item)
+                    await asyncio.to_thread(_collect_proactive)
                     last_proactive = now
             except Exception as e:
                 log.warning("patrol error: %s", e)
@@ -143,10 +44,6 @@ async def lifespan(app: FastAPI):
     yield
     stop.set()
     await task
-    if get_omni_service().status()["state"] != "stopped":
-        await asyncio.to_thread(get_omni_service().stop_sync)
-    _api_loop = None
-    await ws_manager.manager.shutdown()
 
 
 def _collect_due_reminders():
@@ -188,70 +85,6 @@ class ChatIn(BaseModel):
 
 
 # ── WebSocket ──────────────────────────────────────────────────
-
-
-@app.websocket("/ws/live")
-async def ws_live(ws: WebSocket):
-    """Role-aware live channel for Web pages, overlay and PA devices."""
-    if not auth.verify_ws_token(ws):
-        await ws.accept()
-        await ws.close(code=1008)
-        return
-    role = ws.query_params.get("client", "page")
-    raw_version = ws.query_params.get("version", "1")
-    try:
-        version = int(raw_version)
-    except ValueError:
-        await ws.accept()
-        await ws.close(code=1008)
-        return
-    if role not in {"page", "overlay", "device"} or version != 1:
-        await ws.accept()
-        await ws.close(code=1008)
-        return
-    await ws_manager.manager.connect(ws, role=role, version=version)
-    conversation_id = ws.query_params.get("conversation_id") or chat.new_conversation_id("ws")
-    live_assistant = chat.assistant_for("ws:" + conversation_id)
-    await ws_manager.manager.send_to(
-        ws, "hello", {"client": role, "version": version}
-    )
-    if role == "overlay":
-        await ws_manager.manager.send_to(ws, "barrage_settings", barrage.get_settings())
-    try:
-        while True:
-            raw = await ws.receive_text()
-            await _handle_live_message(ws, raw, assistant=live_assistant)
-    except WebSocketDisconnect:
-        ws_manager.manager.disconnect(ws)
-    except Exception as e:
-        log.warning("ws_live error: %s", e)
-        ws_manager.manager.disconnect(ws)
-
-
-async def _handle_live_message(
-    ws: WebSocket,
-    raw: str,
-    assistant: chat.Assistant | None = None,
-) -> None:
-    import json
-    try:
-        msg = json.loads(raw)
-    except json.JSONDecodeError:
-        return
-    mtype = msg.get("type")
-    if mtype == "chat":
-        text = (msg.get("text") or "").strip()
-        if not text:
-            return
-        live_assistant = assistant or chat.assistant_for(f"ws-direct:{id(ws)}")
-        await asyncio.to_thread(storage.add_chat_log, "user", text)
-        reply, evidence = await asyncio.to_thread(live_assistant.respond, text)
-        await asyncio.to_thread(storage.add_chat_log, "assistant", reply, evidence=evidence)
-        await ws_manager.manager.broadcast(ws_manager.EV_CHAT_REPLY,
-                                           {"text": reply, "evidence": evidence or [],
-                                            "is_partial": False})
-    elif mtype == "ping":
-        await ws_manager.manager.send_to(ws, "pong", {})
 
 
 async def _save_bg_segment(pcm: bytes, inbox_dir: Path, session_id: str) -> str | None:
@@ -393,12 +226,6 @@ async def ws_audio(ws: WebSocket):
                 log.warning("ingest after ws_audio: %s", e)
 
 
-@app.websocket("/ws/xiaozhi")
-async def ws_xiaozhi(ws: WebSocket):
-    """xiaozhi-esp32 设备接入（唤醒词+对话）。"""
-    await xiaozhi_server.xiaozhi_endpoint(ws)
-
-
 # ── REST API ────────────────────────────────────────────────────
 
 
@@ -420,10 +247,16 @@ def list_memories(limit: int = 50, offset: int = 0):
     return {"memories": mems, "total": storage.count_memories()}
 
 
+@app.get("/moments", dependencies=[Depends(_require_bearer)])
+def list_moments_route(limit: int = 80):
+    """融合记忆系统时刻清单（微信等来源提取的本人时刻）。"""
+    return {"moments": memory_bridge.list_moments(limit=limit)}
+
+
 @app.get("/memories/recall", dependencies=[Depends(_require_bearer)])
 def recall_memories(q: str, k: int = 5, strategy: str = "hybrid"):
     """v0.10 混合召回端点（BM25+向量+RRF，带预算控制）。"""
-    from . import recall as recall_mod
+    from . import memory_bridge as recall_mod
     rr = recall_mod.hybrid_recall(q, k=k, strategy=strategy)
     items = [{"id": it["memory"]["id"], "kind": it["memory"].get("kind", ""),
               "content": it["memory"].get("content", ""),
@@ -534,68 +367,22 @@ def delete_profile_feedback(feedback_id: str):
     return {"id": feedback_id, "active": False}
 
 
-class BarrageSettingsIn(BaseModel):
-    enabled: bool | None = None
-    quiet_mode: bool | None = None
-    paused_until: str | None = None
-    position: Literal["top", "center", "bottom"] | None = None
-    font_size: int | None = None
-    opacity: float | None = None
-    duration_seconds: int | None = None
-    theme: Literal["contrast", "light", "dark"] | None = None
-    display_id: str | None = None
-
-
-@app.get("/barrage/settings", dependencies=[Depends(_require_bearer)])
-def get_barrage_settings():
-    return barrage.get_settings()
-
-
-@app.put("/barrage/settings", dependencies=[Depends(_require_bearer)])
-async def put_barrage_settings(body: BarrageSettingsIn):
-    patch = body.model_dump(exclude_none=True)
-    try:
-        settings = barrage.patch_settings(patch)
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    await ws_manager.manager.broadcast("barrage_settings", settings, roles={"overlay"})
-    return settings
-
-
-@app.get("/barrage/status", dependencies=[Depends(_require_bearer)])
-def get_barrage_status():
-    settings = barrage.get_settings()
-    return {
-        "settings": settings,
-        "overlay_clients": ws_manager.manager.presence()["overlay"],
-        "paused": barrage.is_paused(settings),
-    }
-
-
-@app.post("/barrage/test", dependencies=[Depends(_require_bearer)])
-async def test_barrage():
-    event = await barrage.publish("test", {"text": "这是一条 PA 测试弹幕"})
-    if event is None:
-        raise HTTPException(status_code=409, detail="barrage is disabled, paused or quiet")
-    return event
-
-
 @app.get("/profile", dependencies=[Depends(_require_bearer)])
 def get_profile():
-    inferred, change_summary, version = storage.latest_persona()
+    _inferred, _change_summary, _version = storage.latest_persona()
     return {
-        "inferred": distill.normalize(inferred) if inferred else distill.normalize({}),
-        "effective": distill.current_profile(),
-        "version": version or 0,
-        "change_summary": change_summary or "",
+        "inferred": memory_bridge.inferred_profile(),
+        "effective": memory_bridge.current_profile(),
+        "version": _version or 0,
+        "change_summary": _change_summary or "",
         "feedback": storage.list_profile_feedback(),
     }
 
 
 @app.post("/distill")
 def run_distill():
-    n = distill.run()
-    return {"distilled": n, "profile": distill.load_persona()}
+    n = memory_bridge.run_distill()
+    return {"distilled": n, "profile": memory_bridge.load_persona()}
 
 
 @app.post("/chat", dependencies=[Depends(_require_bearer)])
@@ -670,14 +457,14 @@ def do_recommend(kind: str = "book", query: str = ""):
 
 @app.get("/wiki")
 def search_wiki(q: str = ""):
-    from . import wiki
-    return wiki.search(q) if q else {"topics": wiki.list_topics()}
+    from . import memory_bridge
+    return memory_bridge.wiki_search(q) if q else {"topics": memory_bridge.wiki_list_topics()}
 
 
 @app.post("/wiki/build")
 def build_wiki():
-    from . import wiki
-    return wiki.build()
+    from . import memory_bridge
+    return memory_bridge.wiki_build()
 
 
 @app.post("/triggers")
@@ -689,64 +476,134 @@ def fire_triggers():
 def full_status():
     return {
         "segments": storage.count_segments(),
-        "memories": storage.count_memories(),
+        "memories": memory_bridge.count_memories(),
         "events": len(calendar.get_events()),
         "reminders": len(reminders.list_all()),
         "speakers": len(storage.get_speakers()),
-        "profile_version": distill.current_version(),
+        "profile_version": memory_bridge.current_version(),
     }
 
 
-@app.get("/local-model/status")
-def local_model_status():
-    return get_omni_service().status()
+# ── 画像 / 复杂度指标 / 混合检索（读融合系统 memory.db，只读）──────────
+# 定位方式沿用 memory_bridge：融合根 = PA 项目根的上一级。画像数据由 P5 逐步长出，
+# 库不存在时返回 available:false 而非 500。
+_MEMORY_DB = Path(config.ROOT).parent / "memory.db"
 
 
-@app.post("/local-model/start", dependencies=[Depends(_require_bearer)])
-async def local_model_start():
-    try:
-        status = await asyncio.to_thread(get_omni_service().acquire_sync, "manual")
-    except RuntimeError as exc:
-        raise HTTPException(503, str(exc)) from exc
-    await ws_manager.manager.broadcast(ws_manager.EV_LOCAL_MODEL_STATUS, status)
-    return status
+def _memdb():
+    if not _MEMORY_DB.is_file():
+        return None
+    import sqlite3
+    c = sqlite3.connect(f"file:{_MEMORY_DB}?mode=ro", uri=True)
+    c.row_factory = sqlite3.Row
+    return c
 
 
-@app.post("/local-model/stop", dependencies=[Depends(_require_bearer)])
-async def local_model_stop():
-    status = await asyncio.to_thread(get_omni_service().release_sync, "manual")
-    await ws_manager.manager.broadcast(ws_manager.EV_LOCAL_MODEL_STATUS, status)
-    return status
+def _rows(c, sql, args=()):
+    return [dict(r) for r in c.execute(sql, args)]
 
 
-@app.post("/perception/start", dependencies=[Depends(_require_bearer)])
-async def perception_start():
-    service = get_omni_service()
-    try:
-        await asyncio.to_thread(service.acquire_sync, "perception")
-        await asyncio.to_thread(service.request_sync, "start_monitoring", {})
-    except RuntimeError as exc:
-        await asyncio.to_thread(service.release_sync, "perception")
-        raise HTTPException(503, str(exc)) from exc
-    status = service.status()
-    await ws_manager.manager.broadcast(ws_manager.EV_PERCEPTION, {"state": "running"})
-    await ws_manager.manager.broadcast(ws_manager.EV_LOCAL_MODEL_STATUS, status)
-    return {"perception": "running", "local_model": status}
+@app.get("/portrait/self")
+def portrait_self():
+    c = _memdb()
+    if not c:
+        return {"available": False}
+    with c:
+        person = _rows(c, "SELECT * FROM person WHERE person_id='self'")
+        return {
+            "available": True,
+            "person": person[0] if person else None,
+            "traits": _rows(c, "SELECT dimension,dist,promoted,n_independent_conv,is_proxy "
+                               "FROM trait WHERE subject_id='self' ORDER BY promoted DESC, "
+                               "n_independent_conv DESC"),
+            "goals": _rows(c, "SELECT * FROM goal WHERE subject_id='self' "
+                              "ORDER BY last_active_at DESC LIMIT 30"),
+            "tasks": _rows(c, "SELECT * FROM task WHERE subject_id='self' AND "
+                              "status IN ('inbox','active','blocked') ORDER BY updated_at DESC"),
+            "values": _rows(c, "SELECT * FROM value WHERE subject_id='self' "
+                               "ORDER BY recurrence_count DESC LIMIT 20"),
+            "affect": _rows(c, "SELECT * FROM affect_profile WHERE subject_id='self'"),
+            "growth": _rows(c, "SELECT * FROM growth WHERE subject_id='self'"),
+        }
 
 
-@app.post("/perception/stop", dependencies=[Depends(_require_bearer)])
-async def perception_stop():
-    service = get_omni_service()
-    if "perception" not in service.consumers():
-        return {"perception": "stopped", "local_model": service.status()}
-    try:
-        await asyncio.to_thread(service.request_sync, "stop_monitoring", {})
-    except RuntimeError as exc:
-        raise HTTPException(503, str(exc)) from exc
-    status = await asyncio.to_thread(service.release_sync, "perception")
-    await ws_manager.manager.broadcast(ws_manager.EV_PERCEPTION, {"state": "stopped"})
-    await ws_manager.manager.broadcast(ws_manager.EV_LOCAL_MODEL_STATUS, status)
-    return {"perception": "stopped", "local_model": status}
+@app.get("/portrait/circles")
+def portrait_circles(limit: int = 60):
+    c = _memdb()
+    if not c:
+        return {"available": False}
+    with c:
+        people = _rows(c, """
+            SELECT p.person_id, p.display_name, p.role, p.person_kind, p.profile_card,
+                   COUNT(DISTINCT u.conv_id) convs, COUNT(*) msgs,
+                   (SELECT COALESCE(SUM(c2.user_msg), 0) FROM conversation c2
+                     WHERE c2.conv_id IN
+                       (SELECT u2.conv_id FROM utterance u2 WHERE u2.person_id = p.person_id)
+                   ) user_msgs,
+                   MIN(u.ts) first_ts, MAX(u.ts) last_ts
+            FROM person p JOIN utterance u ON u.person_id = p.person_id
+            WHERE p.person_kind IN ('person','self')
+            GROUP BY p.person_id ORDER BY user_msgs DESC, msgs DESC LIMIT ?""", (limit,))
+        return {
+            "available": True,
+            "people": people,
+            "layers": _rows(c, "SELECT * FROM metric WHERE name IN "
+                               "('dunbar_layers','signature_shares','social_entropy')"),
+        }
+
+
+@app.get("/portrait/person")
+def portrait_person(id: str):
+    c = _memdb()
+    if not c:
+        return {"available": False}
+    with c:
+        person = _rows(c, "SELECT * FROM person WHERE person_id=?", (id,))
+        if not person:
+            return {"available": True, "person": None}
+        return {
+            "available": True,
+            "person": person[0],
+            "aliases": _rows(c, "SELECT label,alias_space,evidence_count,confidence "
+                                "FROM person_alias WHERE person_id=? "
+                                "ORDER BY evidence_count DESC", (id,)),
+            "traits": _rows(c, "SELECT dimension,dist,promoted,n_independent_conv,is_proxy "
+                               "FROM trait WHERE subject_id=? ORDER BY promoted DESC", (id,)),
+            "values": _rows(c, "SELECT * FROM value WHERE subject_id=? "
+                               "ORDER BY recurrence_count DESC LIMIT 12", (id,)),
+            "affect": _rows(c, "SELECT * FROM affect_profile WHERE subject_id=?", (id,)),
+            "moments": _rows(c, "SELECT id,verbatim_quote,narrative,tags,ts,recalled "
+                                "FROM moment WHERE counterpart_person_id=? "
+                                "ORDER BY ts DESC LIMIT 30", (id,)),
+            "metrics": _rows(c, "SELECT name,value,ci_low,ci_high,n,eligible,"
+                                "ineligible_reason FROM metric WHERE subject_id=?", (id,)),
+        }
+
+
+@app.get("/portrait/metrics")
+def portrait_metrics():
+    c = _memdb()
+    if not c:
+        return {"available": False}
+    with c:
+        return {"available": True,
+                "metrics": _rows(c, "SELECT subject_id,subject_kind,name,value,ci_low,ci_high,"
+                                    "n,null_baseline,params,eligible,ineligible_reason,"
+                                    "computed_at FROM metric ORDER BY subject_kind,subject_id,name")}
+
+
+@app.get("/memory/search")
+def memory_search(q: str, k: int = 10, person: str = ""):
+    """混合检索：FTS5 bigram + 向量网关（不在线自动降级）+ RRF + GA 三维终排。"""
+    if not q.strip():
+        return {"results": []}
+    import sys
+    root = str(Path(config.ROOT).parent)
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from memcore import retrieve
+    c = retrieve.connect()
+    return {"results": retrieve.search(c, q, k=k, person_id=person or None)}
 
 
 class LLMSettingsIn(BaseModel):
@@ -771,27 +628,14 @@ def llm_settings_update(body: LLMSettingsIn):
     requested = body.backend
     if requested and requested not in (
         "stub", "anthropic_proxy", "ollama", "openai_compat", "glm_anthropic",
-        "deepseek", "deepseek_anthropic", "minicpm_o",
+        "deepseek", "deepseek_anthropic",
     ):
         raise HTTPException(400, f"unknown backend: {requested}")
-    previous = config.get("llm.backend", "stub")
-    backend = requested or previous
-    service = get_omni_service()
-    if backend == "minicpm_o" and previous != "minicpm_o":
-        try:
-            service.acquire_sync("chat-backend")
-        except RuntimeError as exc:
-            raise HTTPException(503, str(exc)) from exc
     if requested:
         config.set_override("llm.backend", requested)
-    if previous == "minicpm_o" and backend != "minicpm_o":
-        service.release_sync("chat-backend")
+    backend = requested or config.get("llm.backend", "stub")
     if backend == "stub":
         return {"backend": "stub", "applied": [], "note": "stub 无可配字段"}
-    if backend == "minicpm_o":
-        from . import llm
-        return {"backend": backend, "applied": [],
-                "effective": llm.effective_llm_config()}
     applied = []
     for field in ("model", "context_window", "max_tokens", "thinking_effort",
                   "thinking_format", "base_url", "api_key"):
@@ -808,10 +652,22 @@ def llm_settings_update(body: LLMSettingsIn):
 async def inbox_upload(request: Request, filename: str = Query(...)):
     if not filename.endswith((".txt", ".srt")):
         raise HTTPException(400, "only .txt/.srt accepted")
+    # 红队加固：文件名净化防路径穿越（../、绝对路径、空字节逃逸 inbox）
+    import re as _re
+    safe = Path(filename).name  # 只取最后一段，剥离目录分量
+    safe = _re.sub(r"[^A-Za-z0-9_.\-\u4e00-\u9fff]", "_", safe)
+    if not safe or safe in (".", "..") or safe.startswith("."):
+        raise HTTPException(400, "invalid filename")
     inbox = config.inbox_dir()
     inbox.mkdir(parents=True, exist_ok=True)
-    dest = inbox / filename
+    dest = inbox / safe
+    if not dest.resolve().is_relative_to(inbox.resolve()):
+        raise HTTPException(400, "invalid filename")
     content = await request.body()
     dest.write_bytes(content)
-    return {"saved": str(dest.relative_to(config.ROOT)), "bytes": len(content),
+    try:
+        saved = str(dest.relative_to(config.ROOT))
+    except ValueError:
+        saved = str(dest)
+    return {"saved": saved, "bytes": len(content),
             "ingest_hint": "POST /ingest to scan"}

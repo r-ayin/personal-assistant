@@ -1,0 +1,152 @@
+/* design-system/tokens.css
+ * 「年轮 · 墨迹」v4 语义 token —— OpenDesign 包设计参考件。
+ *
+ * ⚠️ 单一真源是 app/globals.css 的 :root（运行时唯一被 import 的样式）。
+ * 本文件是它的规范化镜像，供设计工具与 agent 查阅；两处不一致时以 globals.css 为准，
+ * 并回头同步本文件。应用代码不得 import 本文件。
+ *
+ * 瓷白三段 + 松烟墨四级 + 朱砂/靛青/石绿/赭石 + alpha 梯度 + 动效曲线。
+ * 禁止硬编码色值进入页面代码；新颜色需求先在 globals.css 加 token。
+ */
+
+:root {
+  /* ── 瓷白三段：页面 → 浮层 → 卡片 ── */
+  --porcelain-0: #F5F5F2;
+  --porcelain-1: #EDEDE8;
+  --porcelain-2: #FCFCFA;
+  /* 语义别名（components.html 夹具沿用） */
+  --bg: var(--porcelain-0);
+  --surface: var(--porcelain-1);
+  --card: var(--porcelain-2);
+
+  /* ── 松烟墨四级 ── */
+  --ink-900: #14161A;
+  --ink-700: #2F343A;
+  --ink-500: #59616A;
+  --ink-300: #8B939C;
+
+  /* ── 四强调色（语义分工不可换） ── */
+  --cinnabar: #D6382B;      /* 朱砂：唯一高饱和强调——印章/证据/时刻/激活 */
+  --cinnabar-deep: #A52418;
+  --indigo: #1E4D7B;        /* 靛青：交互/链接/进行中 */
+  --indigo-deep: #163A5C;
+  --mineral: #2C7A58;       /* 石绿：成功/健康 */
+  --mineral-deep: #1F5A40;
+  --ochre: #A2701F;         /* 赭石：提醒/注意 */
+  --ochre-deep: #7A5314;
+
+  /* 语义映射（组件只认这四个） */
+  --accent: var(--cinnabar);
+  --interactive: var(--indigo);
+  --positive: var(--mineral);
+  --caution: var(--ochre);
+
+  /* ── 文本三级 ── */
+  --text-main: var(--ink-900);
+  --text-dim: var(--ink-500);
+  --text-weak: var(--ink-300);
+  --fg: var(--text-main);
+  --fg-2: var(--text-dim);
+  --muted: var(--text-weak);
+
+  /* ── 线条：年轮系统靠线不靠光 ── */
+  --hairline: rgba(20, 22, 26, 0.10);
+  --hairline-mid: rgba(20, 22, 26, 0.16);
+  --hairline-strong: rgba(20, 22, 26, 0.28);
+  --edge: var(--hairline);
+  --edge-active: rgba(214, 56, 43, 0.55);
+  --border: var(--edge);
+  --ring-line: rgba(20, 22, 26, 0.14);
+
+  /* ── alpha 梯度（页面内联一律引用变量） ── */
+  --ink-02: rgba(20,22,26,0.02);
+  --ink-04: rgba(20,22,26,0.04);
+  --ink-06: rgba(20,22,26,0.06);
+  --ink-08: rgba(20,22,26,0.08);
+  --ink-12: rgba(20,22,26,0.12);
+  --ink-18: rgba(20,22,26,0.18);
+  --cin-04: rgba(214,56,43,0.04);
+  --cin-08: rgba(214,56,43,0.08);
+  --cin-10: rgba(214,56,43,0.10);
+  --cin-12: rgba(214,56,43,0.12);
+  --cin-18: rgba(214,56,43,0.18);
+  --cin-28: rgba(214,56,43,0.28);
+  --ind-04: rgba(30,77,123,0.04);
+  --ind-06: rgba(30,77,123,0.06);
+  --ind-08: rgba(30,77,123,0.08);
+  --ind-10: rgba(30,77,123,0.10);
+  --ind-16: rgba(30,77,123,0.16);
+  --ind-18: rgba(30,77,123,0.18);
+  --ind-25: rgba(30,77,123,0.25);
+  --ind-40: rgba(30,77,123,0.40);
+  --min-08: rgba(44,122,88,0.08);
+  --min-10: rgba(44,122,88,0.10);
+  --min-16: rgba(44,122,88,0.16);
+  --min-30: rgba(44,122,88,0.30);
+  --och-08: rgba(162,112,31,0.08);
+  --och-10: rgba(162,112,31,0.10);
+  --och-16: rgba(162,112,31,0.16);
+  --och-20: rgba(162,112,31,0.20);
+
+  /* ── 字体 ── */
+  --font-sans: 'Noto Sans SC', 'PingFang SC', sans-serif;
+  --font-serif: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-display: var(--font-serif);
+  --font-body: var(--font-sans);
+
+  /* ── 字号阶梯（参考件；应用侧用 Tailwind 数值类） ── */
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 26px;
+  --text-2xl: 34px;
+  --text-3xl: 52px;
+  --leading-body: 1.8;
+
+  /* ── 空间（参考件） ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --container-max: 1360px;
+  --section-gap: 64px;
+
+  /* ── 圆角：墨迹是硬朗的，圆角收紧 ── */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-pill: 999px;
+
+  /* ── 投影：冷灰短促 ── */
+  --elev-card: 0 1px 2px rgba(20,22,26,0.05), 0 8px 24px -14px rgba(20,22,26,0.22);
+  --elev-card-hover: 0 2px 4px rgba(20,22,26,0.06), 0 22px 48px -20px rgba(20,22,26,0.30);
+  --elev-pop: 0 4px 16px -6px rgba(20,22,26,0.20);
+  --seal: 0 0 0 1px var(--cin-28), 0 2px 0 0 var(--cin-12); /* 朱砂落印 */
+  --focus-ring: 0 0 0 3px var(--ink-06);
+
+  /* ── 动效：生长与断裂。与 lib/motion.ts 的 EASE 一一对应，改一处必须同步另一处 ── */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);        /* 长尾缓出：大面积位移 */
+  --ease-overshoot: cubic-bezier(0.34, 1.56, 0.64, 1); /* 强过冲：激进入场 */
+  --ease-snap: cubic-bezier(0.65, 0, 0.35, 1);       /* 急入急出：tab/路由 */
+  --ease-ink: cubic-bezier(0.16, 0.84, 0.24, 1);     /* 墨迹渗透 */
+  --motion-fast: 180ms;
+  --motion-base: 340ms;
+  --motion-slow: 620ms;
+  --motion-glacial: 1200ms;
+
+  /* ── 摩尔纹：两层年轮差速比，差得越小干涉条纹越粗、移动越慢 ── */
+  --moire-a: 168s;
+  --moire-b: 181s;
+}

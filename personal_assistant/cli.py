@@ -8,8 +8,8 @@ import os
 import urllib.error
 import urllib.request
 
-from . import (config, storage, asr, memory, distill, proactive, chat,
-               ingest, calendar, reminders, speaker, verify, recommend, wiki)
+from . import (config, storage, asr, memory_bridge, proactive, chat,
+               ingest, calendar, reminders, speaker, verify, recommend)
 
 
 def cmd_pipeline(args):
@@ -25,7 +25,7 @@ def cmd_pipeline(args):
 
 
 def cmd_distill(args):
-    print(json.dumps(distill.DistillationEngine().run(), ensure_ascii=False, indent=2))
+    print(json.dumps(memory_bridge.DistillationEngine().run(), ensure_ascii=False, indent=2))
 
 
 def cmd_chat(args):
@@ -95,15 +95,20 @@ def cmd_recommend(args):
 
 def cmd_wiki(args):
     if args.action == "build":
-        r = wiki.build()
-        print(f"wiki build: {r}（new_pages+extended，增量；反幻觉:source_ids 真实+body 落地源）")
+        r = memory_bridge.wiki_build()
+        print(f"wiki build: {r}（融合记忆系统 wiki 增量编译）")
     elif args.action == "list":
-        pages = wiki.retrieve()
+        pages = memory_bridge.wiki_retrieve("", k=100)
         print(f"{len(pages)} wiki pages:")
         for p in pages:
-            print(f"  [{','.join(p.get('tags', []))}] {p['title']}  (src:{len(p.get('source_ids', []))})")
+            tags = p.get('tags') or '[]'
+            try:
+                tags = json.loads(tags) if isinstance(tags, str) else tags
+            except Exception:
+                tags = []
+            print(f"  [{','.join(tags)}] {p['title']}")
     elif args.action == "search":
-        pages = wiki.retrieve(tag=args.q, query=args.q)
+        pages = memory_bridge.wiki_retrieve(args.q, k=20)
         print(f"{len(pages)} pages for '{args.q}':")
         for p in pages:
             print(f"  == {p['title']} ==")
@@ -113,30 +118,26 @@ def cmd_wiki(args):
 def cmd_status(args):
     with storage.connect() as c:
         nseg = c.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
-        nmem = c.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
         nev = c.execute("SELECT COUNT(*) FROM events").fetchone()[0]
         nrm = c.execute("SELECT COUNT(*) FROM reminders").fetchone()[0]
-    p, summ, v = storage.latest_persona()
-    print(f"segments:{nseg} memories:{nmem} events:{nev} reminders:{nrm} persona_v:{v}")
-    if p:
+    ms = memory_bridge.status_summary()
+    print(f"segments:{nseg} events:{nev} reminders:{nrm}")
+    print(f"融合记忆系统: wiki_pages:{ms['wiki_pages']} moments:{ms['moments_total']}"
+          f"(未归还 {ms['moments_unrecalled']}) L1:{ms['l1_present']}")
+    p = memory_bridge.current_profile()
+    if any(v for v in p.values()):
         print(f"profile: {json.dumps(p, ensure_ascii=False)[:300]}")
 
 
 def cmd_memory(args):
-    """v0.10 记忆架构调试入口：status / recall / scenes。"""
-    from . import recall as recall_mod, scenes
+    """记忆调试入口（融合记忆系统）：status / recall / scenes / integrate。"""
     if args.action == "status":
-        with storage.connect() as c:
-            nmem = c.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
-            nsc = c.execute("SELECT COUNT(*) FROM scenes").fetchone()[0]
-            nseg = c.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
-        _p, _s, pv = storage.latest_persona()
-        narr = storage.latest_narrative()
-        print(f"L0 segments:{nseg} | L1 memories:{nmem} | L2 scenes:{nsc} | "
-              f"L3 persona_v:{pv} narrative:{len(narr)}字符")
-        print(f"场景待整合记忆: {scenes.pending_count()}")
+        ms = memory_bridge.status_summary()
+        print(f"融合记忆系统根目录: {ms['memory_root']}")
+        print(f"wiki 实体页: {ms['wiki_pages']} | 时刻: {ms['moments_total']}"
+              f"(未归还 {ms['moments_unrecalled']}) | L1: {ms['l1_present']}")
     elif args.action == "recall":
-        rr = recall_mod.hybrid_recall(args.query, k=args.k, strategy=args.strategy)
+        rr = memory_bridge.hybrid_recall(args.query, k=args.k, strategy=args.strategy)
         print(f"[{rr.strategy}] {len(rr.items)} hits, {rr.elapsed_ms:.0f}ms"
               + (", truncated" if rr.truncated else ""))
         for it in rr.items:
@@ -144,12 +145,11 @@ def cmd_memory(args):
             print(f"  {it['score']:.4f} [{'+'.join(it['sources'])}] "
                   f"({m.get('kind')}, p{m.get('priority', 50)}) {m.get('content', '')[:80]}")
     elif args.action == "scenes":
-        for s in storage.scenes_all():
-            print(f"  heat:{s['heat']:<4} {s['name']} — {s['summary'][:50]} "
-                  f"(src:{len(s['source_mem_ids'])}, {s['updated_at'][:19]})")
+        nav = memory_bridge.navigation()
+        print(nav or "（暂无时刻层场景导航）")
     elif args.action == "integrate":
-        r = scenes.integrate()
-        print(f"scene integrate: {r}")
+        r = memory_bridge.DistillationEngine().run()
+        print(f"记忆重建（融合系统）: {r}")
 
 
 def cmd_token(args):
@@ -207,10 +207,8 @@ def cmd_token(args):
 
 def cmd_serve(args):
     import uvicorn
-    from . import desktop_connection
     from pathlib import Path
     # 显式配置 root logger：同时写 stderr + 文件 backend.log
-    # 文件 handler 避免 PowerShell 管道缓冲 stderr 导致 pa.xiaozhi 日志不可见
     log_path = Path("backend.log")
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     root = logging.getLogger()
@@ -226,11 +224,6 @@ def cmd_serve(args):
     sh.setFormatter(fmt)
     sh.setLevel(logging.INFO)
     root.addHandler(sh)
-    desktop_connection.publish_for_server(
-        host=args.host,
-        port=args.port,
-        token=config.api_token(),
-    )
     uvicorn.run("personal_assistant.api:app", host=args.host, port=args.port, reload=False,
                 log_level="info")
 
@@ -269,57 +262,6 @@ def cmd_habits(args):
         print(f"  {s['speaker']:12s}  segs={s['segments']}  chars={s['total_chars']}  avg={s['avg_chars']}  days={s['active_days']}")
 
 
-def cmd_local_model(args):
-    from . import local_omni
-    from .omni_service import get_omni_service
-    if args.action == "download":
-        endpoint = local_omni.download_models()
-        print(json.dumps({"downloaded": True, "endpoint": endpoint,
-                          "model_root": str(local_omni.resolve_model_root()),
-                          "bytes": local_omni.MODEL_TOTAL_BYTES},
-                         ensure_ascii=False, indent=2))
-        return
-    model_root = local_omni.resolve_model_root()
-    worker_path = local_omni.resolve_worker_path()
-    print(json.dumps({
-        **get_omni_service().status(),
-        "worker_path": str(worker_path),
-        "worker_exists": worker_path.is_file(),
-        "model_root": str(model_root),
-        "model_files_valid": local_omni.model_files_are_valid(model_root, verify_hashes=False),
-        "model_marker_valid": local_omni.model_marker_is_valid(model_root),
-        "model_revision": local_omni.MODEL_REVISION,
-        "model_bytes": local_omni.MODEL_TOTAL_BYTES,
-    }, ensure_ascii=False, indent=2))
-
-
-def cmd_perception(args):
-    """通过已运行的 PA API 启停本地多模态感知。"""
-    base_url = (args.base_url or os.environ.get("PA_API_URL")
-                or "http://127.0.0.1:8004").rstrip("/")
-    token = args.token or config.api_token()
-    if not token:
-        raise SystemExit("perception control requires --token or PA_API_TOKEN")
-    request = urllib.request.Request(
-        f"{base_url}/perception/{args.action}",
-        data=b"",
-        headers={"Authorization": f"Bearer {token}"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        try:
-            detail = json.loads(exc.read().decode("utf-8")).get("detail", str(exc))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            detail = str(exc)
-        raise SystemExit(f"PA API returned HTTP {exc.code}: {detail}") from exc
-    except urllib.error.URLError as exc:
-        raise SystemExit(f"PA API unavailable at {base_url}: {exc.reason}") from exc
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-
-
 def cmd_test(args):
     from tests.test_e2e import run
     sys.exit(0 if run() else 1)
@@ -345,15 +287,6 @@ def main(argv=None):
     t = sub.add_parser("token"); t.add_argument("action", choices=["rotate","list","revoke"]); t.add_argument("--grace-days", type=float, default=None); t.add_argument("--prefix", default=""); t.add_argument("--all", action="store_true"); t.set_defaults(func=cmd_token)
     sub.add_parser("llm").set_defaults(func=cmd_llm)
     s = sub.add_parser("serve"); s.add_argument("--host", default="0.0.0.0"); s.add_argument("--port", type=int, default=8004); s.set_defaults(func=cmd_serve)
-    lm = sub.add_parser("local-model")
-    lm.add_argument("action", nargs="?", default="status",
-                    choices=["status", "download"])
-    lm.set_defaults(func=cmd_local_model)
-    perception = sub.add_parser("perception")
-    perception.add_argument("action", choices=["start", "stop"])
-    perception.add_argument("--base-url")
-    perception.add_argument("--token")
-    perception.set_defaults(func=cmd_perception)
     sub.add_parser("test").set_defaults(func=cmd_test)
 
     args = ap.parse_args(argv)

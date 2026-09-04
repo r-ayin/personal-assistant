@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from . import config, storage, transcript, speaker, memory, calendar, reminders
+from . import config, storage, transcript, speaker, memory_bridge, calendar, reminders
 from .llm import get_llm, get_embedder
 
 # Pipeline 步骤签：(segments, metadata) -> dict
@@ -20,14 +20,10 @@ PipelineStep = Callable[[list[dict], dict], dict]
 def _default_pipeline(llm, embedder, reference) -> list[PipelineStep]:
     """创建默认处理管线（v0.10：记忆抽取走两阶段去重，可选场景整合）。"""
     def _memory_step(segs, meta):
+        # 融合记忆系统：转写片段投递到融合系统 inbox/，
+        # 由其 cycle.sh 双头（信息+时刻）摄入；去重/溯源由融合系统负责。
         user_segs = [s for s in segs if s.get("speaker") == "user"] or segs
-        _llm = meta.get("llm", llm)
-        _embedder = meta.get("embedder", embedder)
-        mems = memory.filter_low_priority(memory.extract(user_segs, _llm))
-        if config.get("memory.dedup_enabled", True):
-            counts = memory.dedup_and_store(mems, _embedder, _llm)
-            return {"memories": counts["stored"], "memories_dedup": counts}
-        n = memory.add(mems, _embedder)
+        n = memory_bridge.ingest_segments(user_segs, source="pa_transcript")
         return {"memories": n}
 
     def _calendar_step(segs, meta):
@@ -39,10 +35,7 @@ def _default_pipeline(llm, embedder, reference) -> list[PipelineStep]:
         return {"reminders": n}
 
     def _scene_step(segs, meta):
-        # v0.10 L2：新增记忆达到阈值时触发场景整合（verify 前）
-        from . import scenes
-        if scenes.pending_count() >= config.get("memory.scene_min_memories", 10):
-            return {"scenes": scenes.integrate(llm=meta.get("llm", llm))}
+        # 场景层已并入融合记忆系统的时刻层；此步保留为管线兼容占位
         return {"scenes": None}
 
     def _verify_step(segs, meta):
@@ -120,6 +113,38 @@ def ingest_transcript(path: str, llm=None, embedder=None, diarizer=None,
     return result
 
 
+def _run_pipeline_for_source(source_file: str, llm=None, embedder=None,
+                             reference=None) -> dict:
+    """对某源已入库但 processed=0 的片段跑默认管线，跑完标记 processed=1。
+
+    wav 分支原先只把 ASR 片段写进 segments 表与 DuckDB，从不跑管线，
+    语音转写因此永远进不了融合记忆。本函数补上这一环；processed 标记保证幂等。
+    """
+    llm = llm or get_llm()
+    embedder = embedder or get_embedder()
+    reference = reference or datetime.now().astimezone()
+    with storage.connect() as c:
+        rows = c.execute(
+            "SELECT id, source_file, start_sec, end_sec, text, speaker, created_at "
+            "FROM segments WHERE source_file=? AND processed=0", (source_file,)).fetchall()
+    if not rows:
+        return {}
+    seg_dicts = [dict(r) for r in rows]
+    meta = {"llm": llm, "embedder": embedder, "reference": reference}
+    out = {}
+    for step in _default_pipeline(llm, embedder, reference):
+        try:
+            r = step(seg_dicts, meta)
+            if isinstance(r, dict):
+                out.update(r)
+        except Exception as e:
+            print(f"[ingest] pipeline step {step.__name__}: {e}")
+    with storage.connect() as c:
+        c.execute("UPDATE segments SET processed=1 WHERE source_file=?", (source_file,))
+        c.commit()
+    return out
+
+
 def scan_inbox() -> dict:
     """轮询 inbox：转录文件(.txt/.srt/.json) 优先；纯音频回退 ASR。"""
     inbox = config.inbox_dir()
@@ -135,10 +160,13 @@ def scan_inbox() -> dict:
                 total[k] += r.get(k, 0)
             total["files"] += 1
         elif suf in (".wav", ".mp3", ".m4a", ".flac"):
-            # 设备没给转录才回退 ASR（罕见，按 ASR 后端处理）
+            # 设备没给转录才回退 ASR；ASR 入库后必须跑管线，否则语音进不了记忆
             from .asr import IngestionPipeline
             n = IngestionPipeline().process_file(str(f))
-            print(f"[ingest-asr] {f.name} -> {n} segments (no transcript)")
+            r = _run_pipeline_for_source(f.name)
+            print(f"[ingest-asr] {f.name} -> {n} segments, pipeline {r}")
             total["segments"] += n
+            for k in ("memories", "events", "reminders"):
+                total[k] += r.get(k, 0)
             total["files"] += 1
     return total

@@ -2,7 +2,18 @@
 
 > 直导式构建。v0.1 深核主干；v0.2 说话人/日历/提醒/反幻觉；v0.3 推荐联网搜索；v0.4 个人 wiki；v0.5 LLM 可配 + 前端设计文档；v0.6 安卓 App；v0.7 DeepSeek 后端；v0.8 ESP32-S3 双模式固件 + /ws/audio 管线；Web 面板 Next.js 化；真 ASR/声纹后端就绪；v0.10 TencentDB Agent Memory 架构融合。
 
-## 当前状态（2026-08-24）
+## 当前状态（2026-08-29）
+### v0.12 固件裁剪——只保留录音+上传（转写在服务器侧）
+- ✅ ESP32 固件裁剪为纯录音设备：删除实时对话/TTS/唤醒词/MCP 功能，只保留麦克风采集 + 背景音频推流（PCM → ws://<pc_ip>:<port>/ws/audio）。
+- ✅ 删除模块：wake_words/（7 文件）、mcp_server.cc/h、websocket_protocol.cc/h、mqtt_protocol.cc/h。
+- ✅ 裁剪 application.cc/h：去掉对话协议初始化/切换、TTS 下行处理、MCP 工具注册、唤醒词事件分支；保留音频服务启动与背景音频推流。
+- ✅ 裁剪 audio_service.cc/h：去掉 wake_word 注入/检测/编码、playback 队列相关逻辑；保留麦克风采集/编码/处理器。
+- ✅ CMakeLists.txt 同步更新：移除已删源文件、press_to_talk_mcp_tool。
+- ✅ sdkconfig.defaults.esp32s3：关闭 CONFIG_SR_WN_WN9_NIHAOXIAOZHI_TTS。
+- ✅ 保留：display（状态反馈）、protocol 基类（audio_service 依赖）、boards/genjutech-s3-1.54tft、components/background_audio、LED、OTA、settings、system_info。
+- ℹ️ 验证方式：静态自检（idf.py 不可用），grep 确认被删符号无残留引用，逐文件检查依赖闭包，全绿。
+- ℹ️ 新定位：设备只负责录音+上传，转写/理解/记忆全部在服务器侧完成。
+
 ### v0.11 实时语音应答增强（进行中，实体设备已刷写并联通）
 - 🚧 主线与详细进度登记在 `personal-assistant-v011` 工作区（PROGRESS.md / planning/status.json）。本仓库为固件/总览侧：自定义唤醒词「江江」+ Wi-Fi PSM 关停已刷写 ota_0；服务端 LLM 限长 160 + ASR small/beam=1 已上线 8004；真机分段时延复测待办。
 - ✅ 服务端 turn 状态机定型：`idle→listening→recognizing→thinking→speaking`，单调 `turn_id` + generation guard 可取消 turn；LLM 解包契约修复（`AssistantResponse` 对象解包，600-604 行）。

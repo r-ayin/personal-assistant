@@ -1,7 +1,6 @@
 #include "assets.h"
 #include "board.h"
 #include "display.h"
-#include "application.h"
 #include "lvgl_theme.h"
 #include "emote_display.h"
 #include "expression_emote.h"
@@ -66,56 +65,6 @@ void Assets::UnApplyPartition() {
 
 bool Assets::GetAssetData(const std::string& name, void*& ptr, size_t& size) {
     return strategy_ ? strategy_->GetAssetData(this, name, ptr, size) : false;
-}
-
-bool Assets::LoadSrmodelsFromIndex(Assets* assets, cJSON* root) {
-    void* ptr = nullptr;
-    size_t size = 0;
-    bool need_delete_root = false;
-
-    // If root is not provided, parse index.json
-    if (root == nullptr) {
-        if (!assets->GetAssetData("index.json", ptr, size)) {
-            ESP_LOGE(TAG, "The index.json file is not found");
-            return false;
-        }
-
-        root = cJSON_ParseWithLength(static_cast<char*>(ptr), size);
-        if (root == nullptr) {
-            ESP_LOGE(TAG, "The index.json file is not valid");
-            return false;
-        }
-        need_delete_root = true;
-    }
-
-    cJSON* srmodels = cJSON_GetObjectItem(root, "srmodels");
-    if (cJSON_IsString(srmodels)) {
-        std::string srmodels_file = srmodels->valuestring;
-        if (assets->GetAssetData(srmodels_file, ptr, size)) {
-            if (assets->models_list_ != nullptr) {
-                esp_srmodel_deinit(assets->models_list_);
-                assets->models_list_ = nullptr;
-            }
-            assets->models_list_ = srmodel_load(static_cast<uint8_t*>(ptr));
-            if (assets->models_list_ != nullptr) {
-                auto& app = Application::GetInstance();
-                app.GetAudioService().SetModelsList(assets->models_list_);
-                if (need_delete_root) {
-                    cJSON_Delete(root);
-                }
-                return true;
-            } else {
-                ESP_LOGE(TAG, "Failed to load srmodels.bin");
-            }
-        } else {
-            ESP_LOGE(TAG, "The srmodels file %s is not found", srmodels_file.c_str());
-        }
-    }
-
-    if (need_delete_root) {
-        cJSON_Delete(root);
-    }
-    return false;
 }
 
 #if HAVE_LVGL
@@ -232,8 +181,6 @@ bool Assets::LvglStrategy::Apply(Assets* assets, bool refresh_display_theme) {
             return false;
         }
     }
-
-    Assets::LoadSrmodelsFromIndex(assets, root);
 
     auto& theme_manager = LvglThemeManager::GetInstance();
     auto light_theme = theme_manager.GetTheme("light");
@@ -414,8 +361,6 @@ bool Assets::EmoteStrategy::GetAssetData(Assets* assets, const std::string& name
 }
 
 bool Assets::EmoteStrategy::Apply(Assets* assets, bool refresh_display_theme) {
-    Assets::LoadSrmodelsFromIndex(assets);
-
     auto display = Board::GetInstance().GetDisplay();
     auto* emote_display = dynamic_cast<emote::EmoteDisplay*>(display);
 

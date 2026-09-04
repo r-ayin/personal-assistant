@@ -230,25 +230,11 @@ class TestASRFactory:
 
 
 class TestStubTranscriber:
-    def test_returns_segments(self):
-        t = StubTranscriber()
-        segs = t.transcribe("fake_audio.wav")
-        assert isinstance(segs, list)
-        assert len(segs) == len(StubTranscriber.SAMPLE)
-        for s in segs:
-            assert isinstance(s, Segment)
-
-    def test_segment_fields(self):
-        t = StubTranscriber()
-        segs = t.transcribe("test.wav")
-        for s in segs:
-            assert s.id
-            assert s.source_file == "test.wav"
-            assert s.start_sec >= 0
-            assert s.end_sec > s.start_sec
-            assert s.text
-            assert s.speaker == "user"
-            assert s.language == "zh"
+    def test_audio_returns_empty_never_fabricates(self):
+        """2026-09-04 事故回归：stub 对真实音频必须返回空，绝不返回写死样例。
+        旧行为（返回 SAMPLE）曾让假转写顺着 segments→events/reminders→UI
+        冒充用户说过的话（用户实际看到过从未说过的"日程"）。"""
+        assert StubTranscriber().transcribe("fake_audio.wav") == []
 
     def test_txt_input(self, tmp_path):
         f = tmp_path / "recording.txt"
@@ -260,12 +246,22 @@ class TestStubTranscriber:
         assert segs[2].text == "第三句话"
         assert segs[0].source_file == "recording.txt"
 
-    def test_to_tuple(self):
-        t = StubTranscriber()
-        segs = t.transcribe("x.wav")
-        tup = segs[0].to_tuple()
+    def test_segment_fields_and_tuple(self, tmp_path):
+        f = tmp_path / "recording.txt"
+        f.write_text("唯一一句话", encoding="utf-8")
+        segs = StubTranscriber().transcribe(str(f))
+        assert len(segs) == 1
+        s = segs[0]
+        assert s.id
+        assert s.source_file == "recording.txt"
+        assert s.start_sec >= 0
+        assert s.end_sec > s.start_sec
+        assert s.text
+        assert s.speaker == "user"
+        assert s.language == "zh"
+        tup = s.to_tuple()
         assert len(tup) == 10
-        assert tup[0] == segs[0].id
+        assert tup[0] == s.id
 
 
 # ── Speaker factory + TextDiarizer ────────────────────────────────

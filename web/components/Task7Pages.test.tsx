@@ -1,84 +1,88 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
-import PersonalityPage from "@/app/assistant/personality/page";
-import ProfilePage from "@/app/assistant/profile/page";
-import RuntimePage from "@/app/settings/runtime/page";
-import BarragePage from "@/app/settings/barrage/page";
-import ConnectionPage from "@/app/settings/connection/page";
-import { ApiError, api, clearApiToken, getApiToken } from "@/lib/api";
-import type {
-  AssistantPersonality,
-  BarrageSettings,
-  ProfileResponse,
-  RuntimeStatus,
-} from "@/lib/types";
+import StatusStrip from "@/components/StatusStrip";
+import PendingPanel from "@/components/panels/PendingPanel";
+import RootPage from "@/app/page";
+import TodayPage from "@/app/today/page";
+import ChatPage from "@/app/chat/page";
+import MemoryPage from "@/app/memory/page";
+import PortraitPage from "@/app/portrait/page";
+import SystemPage from "@/app/system/page";
+import { LEGACY_REDIRECTS, isActive, legacyTarget, navForPath } from "@/lib/nav";
+import { api, clearApiToken, getApiToken, setApiToken } from "@/lib/api";
 
 vi.mock("next/navigation", () => ({ usePathname: vi.fn() }));
-vi.mocked(usePathname).mockReturnValue("/today/");
+vi.mocked(usePathname).mockReturnValue("/");
 
-const personality: AssistantPersonality = {
-  preset_id: "gentle",
-  name: "PA",
-  user_address: "你",
-  directness: 2,
-  humor: 2,
-  initiative: "balanced",
-  reply_length: "balanced",
-  barrage_style: "restrained",
-  taboos: [],
-  custom_instruction: "",
-  version: 7,
-  created_at: "2026-07-31T09:00:00Z",
-};
+// Mock framer-motion to avoid animation issues in tests.
+// 沿用旧手法：motion.* 一律降级成同名的静态 DOM 标签，动画 props 经 filterDomProps 滤掉。
+// 新增两点，因为新外壳（Reveal / TabRail / PageTransition / TabPanel）会用到：
+//   · useReducedMotion 返回 true —— 让这些组件走「纯静态可见」分支，测试里确定且不依赖 rAF；
+//   · 覆盖到全部实际用到的标签（section/article/p/button/circle/path/g/text），
+//     否则取到 undefined 会直接渲染崩。
+vi.mock("framer-motion", () => {
+  const tag = (name: string) => {
+    const Tag = name as unknown as React.ElementType;
+    return (props: Record<string, unknown>) => <Tag {...filterDomProps(props)} />;
+  };
+  return {
+    motion: {
+      div: tag("div"),
+      span: tag("span"),
+      p: tag("p"),
+      section: tag("section"),
+      article: tag("article"),
+      button: tag("button"),
+      circle: tag("circle"),
+      path: tag("path"),
+      g: tag("g"),
+      text: tag("text"),
+    },
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    useReducedMotion: () => true,
+  };
+});
 
-const modelStatus: RuntimeStatus = {
-  state: "ready",
-  running: true,
-  error: "",
-  consumers: ["manual", "perception"],
-};
-
-const barrageSettings: BarrageSettings = {
-  enabled: true,
-  quiet_mode: false,
-  paused_until: "",
-  position: "top",
-  font_size: 24,
-  opacity: 0.8,
-  duration_seconds: 8,
-  theme: "contrast",
-  display_id: "primary",
-};
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+function filterDomProps(props: Record<string, unknown>) {
+  const dom: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(props)) {
+    if (
+      k.startsWith("initial") || k.startsWith("animate") || k.startsWith("exit") ||
+      k.startsWith("transition") || k.startsWith("while") || k.startsWith("onAnimation") ||
+      k === "variants" || k === "layout" || k === "layoutId" ||
+      k === "custom" || k === "viewport"
+    ) continue;
+    dom[k] = v;
+  }
+  return dom;
 }
 
-function mockPersonalityLoad() {
-  vi.spyOn(api, "assistantPersonality").mockResolvedValue(personality);
-  vi.spyOn(api, "previewAssistantPersonality").mockResolvedValue({
-    chat: "你，我是 PA。聊天示例。",
-    reminder: "你，约定的提醒时间到了。",
-    perception: "你，我注意到一个变化。",
+/** 各面板挂载即取数；给一个「一切正常但空空如也」的后端，免得测试里冒出未处理的 rejection */
+const EMPTY_BACKEND = {
+  events: [], reminders: [], moments: [], memories: [], segments: [], total: 0,
+  topics: [], pages: [], items: [], chat_log: [], recommendations: [], feedback: [],
+};
+
+/** 挂载即取数的面板会在同步断言之后才 resolve；用 act 排空微任务，避免 act(...) 警告 */
+async function flushEffects() {
+  await act(async () => {
+    await Promise.resolve();
   });
 }
 
-function mockRuntimeLoad() {
-  vi.spyOn(api, "health").mockResolvedValue({ status: "ok", segments: 2, memories: 3 });
-  vi.spyOn(api, "localModelStatus").mockResolvedValue(modelStatus);
-  vi.spyOn(api, "barrageStatus").mockResolvedValue({
-    settings: barrageSettings,
-    overlay_clients: 1,
-    paused: false,
-  });
-  vi.spyOn(api, "llmSettings").mockResolvedValue({ backend: "minicpm_o", model: "MiniCPM-o" });
-}
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(EMPTY_BACKEND), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ),
+  );
+});
 
 afterEach(() => {
   cleanup();
@@ -86,162 +90,177 @@ afterEach(() => {
   vi.unstubAllGlobals();
   clearApiToken();
   delete window.PA_TOKEN;
-  vi.mocked(usePathname).mockReturnValue("/today/");
+  vi.mocked(usePathname).mockReturnValue("/");
 });
 
-describe("Personality Studio", () => {
-  it("applies a preset only to the unsaved draft", async () => {
-    mockPersonalityLoad();
-    const save = vi.spyOn(api, "updateAssistantPersonality");
-    render(<PersonalityPage />);
-
-    await screen.findByDisplayValue("PA");
-    fireEvent.click(screen.getByRole("button", { name: "理性克制" }));
-    expect(screen.getByLabelText("直接程度")).toHaveValue("4");
-    expect(screen.getByLabelText("幽默程度")).toHaveValue("1");
-    expect(save).not.toHaveBeenCalled();
-    expect(screen.getByText("有未保存修改")).toBeInTheDocument();
+describe("Sidebar navigation", () => {
+  it("renders the 5 primary destinations", () => {
+    render(<Sidebar />);
+    expect(screen.getByText("今天")).toBeInTheDocument();
+    expect(screen.getByText("对话")).toBeInTheDocument();
+    expect(screen.getByText("画像")).toBeInTheDocument();
+    expect(screen.getByText("记忆")).toBeInTheDocument();
+    expect(screen.getByText("系统")).toBeInTheDocument();
   });
 
-  it("refreshes all three preview examples from the unsaved draft", async () => {
-    mockPersonalityLoad();
-    render(<PersonalityPage />);
-
-    await screen.findByDisplayValue("PA");
-    fireEvent.change(screen.getByLabelText("助手名字"), { target: { value: "阿简" } });
-    fireEvent.click(screen.getByRole("button", { name: "更新预览" }));
-
-    await waitFor(() =>
-      expect(api.previewAssistantPersonality).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "阿简" }),
-      ),
-    );
-    expect(screen.getByText("你，我是 PA。聊天示例。")).toBeInTheDocument();
-    expect(screen.getByText("你，约定的提醒时间到了。")).toBeInTheDocument();
-    expect(screen.getByText("你，我注意到一个变化。")).toBeInTheDocument();
+  it("no longer flattens the 11 legacy items into the rail", () => {
+    render(<Sidebar />);
+    // 这些原先都是主导航项，现在降级为 tab 或已移除
+    for (const gone of ["投喂", "日历", "知识", "档案", "提醒", "推荐", "校验", "设置"]) {
+      expect(screen.queryByText(gone)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText("桌面弹幕")).not.toBeInTheDocument();
+    expect(screen.queryByText("模型与感知")).not.toBeInTheDocument();
+    expect(screen.queryByText("性格工作室")).not.toBeInTheDocument();
   });
 
-  it("saves with expected_version", async () => {
-    mockPersonalityLoad();
-    const save = vi
-      .spyOn(api, "updateAssistantPersonality")
-      .mockResolvedValue({ ...personality, name: "阿简", version: 8 });
-    render(<PersonalityPage />);
-
-    await screen.findByDisplayValue("PA");
-    fireEvent.change(screen.getByLabelText("助手名字"), { target: { value: "阿简" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存性格" }));
-
-    await waitFor(() =>
-      expect(save).toHaveBeenCalledWith(expect.objectContaining({ name: "阿简", expected_version: 7 })),
-    );
-  });
-
-  it("preserves edits and shows the exact 409 conflict message", async () => {
-    mockPersonalityLoad();
-    vi.spyOn(api, "updateAssistantPersonality").mockRejectedValue(
-      new ApiError("version conflict", 409, "/assistant/personality", { detail: "version conflict" }),
-    );
-    render(<PersonalityPage />);
-
-    await screen.findByDisplayValue("PA");
-    fireEvent.change(screen.getByLabelText("助手名字"), { target: { value: "保留这个草稿" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存性格" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "性格配置已在其他页面更新，请重新加载后合并修改。",
-    );
-    expect(screen.getByLabelText("助手名字")).toHaveValue("保留这个草稿");
+  it("把根路由认作「今天」", () => {
+    expect(isActive("/today/", "/")).toBe(true);
+    expect(isActive("/today/", "/web/today/")).toBe(true);
+    expect(navForPath("/web/memory/")?.label).toBe("记忆");
   });
 });
 
-describe("Profile feedback", () => {
-  const profile: ProfileResponse = {
-    inferred: { preferences: ["咖啡"], goals: ["完成评审"] },
-    effective: { preferences: ["咖啡", "茶"], goals: ["完成评审"] },
-    version: 4,
-    change_summary: "依据 memory:m1 更新",
-    feedback: [
-      {
-        id: "feedback-1",
-        dimension: "preferences",
-        value: "茶",
-        action: "add",
-        evidence_kind: "user_statement",
-        evidence: "用户明确说更喜欢茶",
-        active: true,
-        created_at: "2026-07-31T09:00:00Z",
-      },
-    ],
-  };
-
-  it("separates inferred, effective and feedback evidence", async () => {
-    vi.spyOn(api, "profile").mockResolvedValue(profile);
-    render(<ProfilePage />);
-
-    const inferred = await screen.findByTestId("profile-inferred");
-    const effective = screen.getByTestId("profile-effective");
-    const evidence = screen.getByTestId("profile-evidence");
-    expect(within(inferred).getByText("咖啡")).toBeInTheDocument();
-    expect(within(effective).getByText("茶")).toBeInTheDocument();
-    expect(within(evidence).getByText(/用户明确说更喜欢茶/)).toBeInTheDocument();
-    expect(screen.queryByText("弹幕风格")).not.toBeInTheDocument();
+describe("Destinations render", () => {
+  it("根路由 = 今天，带 4 个 tab 且默认停在「此刻」", () => {
+    vi.mocked(usePathname).mockReturnValue("/");
+    render(<RootPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "今天" })).toBeInTheDocument();
+    for (const label of ["此刻", "日程", "提醒", "推荐"]) {
+      expect(screen.getByRole("tab", { name: new RegExp(label) })).toBeInTheDocument();
+    }
+    expect(document.getElementById("panel-now")).toBeInTheDocument();
   });
 
-  it("can add or suppress known dimensions and deactivate feedback", async () => {
-    vi.spyOn(api, "profile").mockResolvedValue(profile);
-    const add = vi.spyOn(api, "addProfileFeedback").mockResolvedValue({ id: "feedback-2", active: true });
-    const remove = vi.spyOn(api, "deleteProfileFeedback").mockResolvedValue({ id: "feedback-1", active: false });
-    render(<ProfilePage />);
-
-    await screen.findByText(/用户明确说更喜欢茶/);
-    fireEvent.change(screen.getByLabelText("画像维度"), { target: { value: "preferences" } });
-    fireEvent.change(screen.getByLabelText("反馈内容"), { target: { value: "不喝咖啡" } });
-    fireEvent.change(screen.getByLabelText("反馈依据"), { target: { value: "我明确说明不喝咖啡" } });
-    fireEvent.click(screen.getByRole("button", { name: "抑制此项" }));
-
-    await waitFor(() =>
-      expect(add).toHaveBeenCalledWith({
-        dimension: "preferences",
-        value: "不喝咖啡",
-        action: "suppress",
-        evidence_kind: "user_statement",
-        evidence: "我明确说明不喝咖啡",
-      }),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "停用反馈：茶" }));
-    await waitFor(() => expect(remove).toHaveBeenCalledWith("feedback-1"));
+  it("/today/ 与根路由渲染同一个目的地", () => {
+    vi.mocked(usePathname).mockReturnValue("/today/");
+    render(<TodayPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "今天" })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(document.getElementById("panel-now")).toBeInTheDocument();
   });
-});
 
-describe("Runtime controls", () => {
-  it("stops perception through /perception/stop and renders returned model state", async () => {
-    mockRuntimeLoad();
-    const stop = vi.spyOn(api, "stopPerception").mockResolvedValue({
-      perception: "stopped",
-      local_model: { ...modelStatus, state: "stopped", running: false, consumers: ["manual"] },
+  it("切 tab 会换成对应面板并把标题跟着改", async () => {
+    vi.mocked(usePathname).mockReturnValue("/today/");
+    render(<TodayPage />);
+    fireEvent.click(screen.getByRole("tab", { name: /日程/ }));
+    await waitFor(() => {
+      expect(document.getElementById("panel-schedule")).toBeInTheDocument();
     });
-    render(<RuntimePage />);
-
-    await screen.findByText("MiniCPM-o");
-    fireEvent.click(screen.getByRole("button", { name: "停止感知" }));
-
-    await waitFor(() => expect(stop).toHaveBeenCalledOnce());
-    expect(screen.getByTestId("runtime-model")).toHaveTextContent("stopped");
+    expect(document.getElementById("panel-now")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "日程" })).toBeInTheDocument();
   });
 
-  it("renders PA, model, perception and overlay independently", async () => {
-    mockRuntimeLoad();
-    render(<RuntimePage />);
+  it("/chat/ 只有外壳、没有 tab", async () => {
+    vi.mocked(usePathname).mockReturnValue("/chat/");
+    render(<ChatPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "对话" })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "输入想对菌林说的话" })).toBeInTheDocument();
+    await flushEffects();
+  });
 
-    await screen.findByText("MiniCPM-o");
-    expect(screen.getByTestId("runtime-pa")).toHaveTextContent("ok");
-    expect(screen.getByTestId("runtime-model")).toHaveTextContent("ready");
-    expect(screen.getByTestId("runtime-perception")).toHaveTextContent("running");
-    expect(screen.getByTestId("runtime-overlay")).toHaveTextContent("connected");
-    expect(screen.getByText("manual")).toBeInTheDocument();
-    expect(screen.getByText("perception")).toBeInTheDocument();
+  it("/memory/ 带 3 个 tab，检索接真实端点且状态诚实", async () => {
+    vi.mocked(usePathname).mockReturnValue("/memory/");
+    render(<MemoryPage />);
+    // h1 跟随当前 tab：默认 moments → 「时刻」
+    expect(screen.getByRole("heading", { level: 1, name: "时刻" })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole("tab", { name: /检索/ }));
+    await waitFor(() => {
+      expect(document.getElementById("panel-search")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("heading", { level: 1, name: "检索" })).toBeInTheDocument();
+    // 诚实状态之一：未提交 / 加载中 / 连不上 / 无命中；绝不编造结果
+    expect(screen.getByText(/输入关键词|检索中|连不上后端|没有命中/)).toBeInTheDocument();
+  });
+
+  it("/portrait/ 4 个 tab 接真实端点，空/错时诚实降级不编造", async () => {
+    vi.mocked(usePathname).mockReturnValue("/portrait/");
+    render(<PortraitPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "我" })).toBeInTheDocument();
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    await waitFor(() => {
+      expect(screen.getByText(/正在从消息里读取|连不上后端|画像库尚未建立|画像正在从你的消息里长出来/))
+        .toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: /复杂度指标/ }));
+    await waitFor(() => {
+      expect(document.getElementById("panel-metrics")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("heading", { level: 1, name: "复杂度指标" })).toBeInTheDocument();
+    expect(screen.getByText(/正在读取指标|连不上后端|指标库尚未建立|还没有任何指标/)).toBeInTheDocument();
+  });
+
+  it("/system/ 带 4 个 tab，默认停在摄入", () => {
+    vi.mocked(usePathname).mockReturnValue("/system/");
+    render(<SystemPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "系统" })).toBeInTheDocument();
+    for (const label of ["摄入", "助手人格", "校验", "设置"]) {
+      expect(screen.getByRole("tab", { name: new RegExp(label) })).toBeInTheDocument();
+    }
+    expect(document.getElementById("panel-ingest")).toBeInTheDocument();
+  });
+});
+
+describe("PendingPanel", () => {
+  it("说明在等哪个后端阶段，并列出具体的 needs", () => {
+    render(
+      <PendingPanel
+        title="单人档案"
+        waiting="后端 P2 + P5"
+        needs={["5950 个发言者标签归并到 person_id", "共现网络构建"]}
+      />,
+    );
+    expect(screen.getByRole("heading", { level: 2, name: "单人档案" })).toBeInTheDocument();
+    expect(screen.getByText(/后端 P2 \+ P5/)).toBeInTheDocument();
+    expect(screen.getByText("5950 个发言者标签归并到 person_id")).toBeInTheDocument();
+    expect(screen.getByText("共现网络构建")).toBeInTheDocument();
+    expect(screen.getByText(/不放任何示例数字/)).toBeInTheDocument();
+  });
+
+  it("needs 可省略", () => {
+    render(<PendingPanel title="关系圈" waiting="后端 P2：跨会话人物身份归并尚未完成" />);
+    expect(screen.getByRole("heading", { level: 2, name: "关系圈" })).toBeInTheDocument();
+    expect(screen.queryByText("接通它需要")).not.toBeInTheDocument();
+  });
+});
+
+describe("Legacy redirects", () => {
+  it("9 个旧路由都能算出新目标（含尾斜杠与 basePath 归一化）", () => {
+    const expected: Record<string, string> = {
+      "/calendar/": "/today/?tab=schedule",
+      "/reminders/": "/today/?tab=reminders",
+      "/recommend/": "/today/?tab=recommend",
+      "/memories/": "/memory/?tab=moments",
+      "/wiki/": "/memory/?tab=knowledge",
+      "/inbox/": "/system/?tab=ingest",
+      "/persona/": "/system/?tab=persona",
+      "/verify/": "/system/?tab=verify",
+      "/settings/": "/system/?tab=settings",
+    };
+    expect(Object.keys(LEGACY_REDIRECTS)).toHaveLength(9);
+    for (const [from, to] of Object.entries(expected)) {
+      expect(legacyTarget(from)).toBe(to);
+      // 静态导出带尾斜杠，但访问时也可能没有
+      expect(legacyTarget(from.slice(0, -1))).toBe(to);
+      expect(legacyTarget(`/web${from}`)).toBe(to);
+    }
+  });
+
+  it("根路由不是重定向目标——它就是今天", () => {
+    expect(legacyTarget("/")).toBeUndefined();
+    expect(legacyTarget("/today/")).toBeUndefined();
+  });
+});
+
+describe("StatusStrip", () => {
+  it("renders the breathing bar", async () => {
+    const { container } = render(<StatusStrip />);
+    expect(container.querySelector(".status-bar")).toBeInTheDocument();
+    await flushEffects();
   });
 });
 
@@ -252,7 +271,12 @@ describe("API error contracts", () => {
       { status: 409, headers: { "Content-Type": "application/json" } },
     )));
 
-    const request = api.updateAssistantPersonality({ ...personality, expected_version: 7 });
+    const request = api.updateAssistantPersonality({
+      preset_id: "gentle", name: "PA", user_address: "你",
+      directness: 2, humor: 2, initiative: "balanced",
+      reply_length: "balanced", barrage_style: "light", taboos: [], custom_instruction: "",
+      expected_version: 7,
+    });
     await expect(request).rejects.toMatchObject({
       status: 409,
       path: "/assistant/personality",
@@ -260,17 +284,17 @@ describe("API error contracts", () => {
     });
   });
 
-  it("uses PUT for barrage settings and DELETE for feedback deactivation", async () => {
+  it("uses DELETE for feedback deactivation", async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify(barrageSettings), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "feedback-1", active: false }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await api.updateBarrageSettings({ opacity: 0.6 });
     await api.deleteProfileFeedback("feedback-1");
 
-    expect(fetchMock).toHaveBeenNthCalledWith(1, "/barrage/settings", expect.objectContaining({ method: "PUT" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(2, "/profile/feedback/feedback-1", expect.objectContaining({ method: "DELETE" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/profile/feedback/feedback-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
   });
 
   it("仅在已有 conversation id 时写入聊天请求体", async () => {
@@ -290,111 +314,22 @@ describe("API error contracts", () => {
   });
 });
 
-describe("Local model confirmation", () => {
-  it("confirms immediately before starting the local model", async () => {
-    mockRuntimeLoad();
-    vi.spyOn(api, "localModelStatus").mockResolvedValue({ ...modelStatus, state: "stopped", running: false, consumers: [] });
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-    const start = vi.spyOn(api, "startLocalModel").mockResolvedValue(modelStatus);
-    render(<RuntimePage />);
-
-    await screen.findByText("MiniCPM-o");
-    fireEvent.click(screen.getByRole("button", { name: "启动模型" }));
-    expect(confirm).toHaveBeenCalledOnce();
-    expect(start).not.toHaveBeenCalled();
-  });
-});
-
-describe("Barrage settings", () => {
-  it("calls the backend test endpoint and never claims local delivery", async () => {
-    vi.spyOn(api, "barrageSettings").mockResolvedValue(barrageSettings);
-    vi.spyOn(api, "barrageStatus").mockResolvedValue({ settings: barrageSettings, overlay_clients: 1, paused: false });
-    const pending = deferred<{ id: string; kind: string; priority: "low"; text: string; created_at: string; expires_at: string; personality_version: number; style: string; assistant_name: string; evidence: string }>();
-    const testBarrage = vi.spyOn(api, "testBarrage").mockReturnValue(pending.promise);
-    render(<BarragePage />);
-
-    await screen.findAllByDisplayValue("24");
-    fireEvent.click(screen.getByRole("button", { name: "发送测试弹幕" }));
-    expect(testBarrage).toHaveBeenCalledOnce();
-    expect(screen.queryByText(/已投递/)).not.toBeInTheDocument();
-
-    pending.resolve({
-      id: "event-42",
-      kind: "test",
-      priority: "low",
-      text: "测试",
-      created_at: "2026-07-31T09:00:00Z",
-      expires_at: "2026-07-31T09:00:08Z",
-      personality_version: 7,
-      style: "restrained",
-      assistant_name: "PA",
-      evidence: "manual-test",
-    });
-    expect(await screen.findByText("event-42")).toBeInTheDocument();
-    expect(screen.getByText("后端已接受")).toBeInTheDocument();
-    expect(screen.queryByText(/已投递/)).not.toBeInTheDocument();
-  });
-});
-
-
-describe("Token precedence", () => {
+describe("Token management", () => {
   it("prefers window.PA_TOKEN over the session token", () => {
     sessionStorage.setItem("pa-api-token", "session-token");
     window.PA_TOKEN = "injected-token";
     expect(getApiToken()).toBe("injected-token");
   });
-});
-describe("Connection token", () => {
-  it("stores the token only in sessionStorage and verifies authenticated endpoints", async () => {
-    vi.spyOn(api, "health").mockResolvedValue({ status: "ok", segments: 2, memories: 3 });
-    vi.spyOn(api, "assistantPersonality").mockResolvedValue(personality);
-    render(<ConnectionPage />);
 
-    fireEvent.change(screen.getByLabelText("PA API Token"), { target: { value: "session-secret" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存并验证" }));
-
-    await screen.findByText("连接与鉴权均正常");
-    expect(sessionStorage.getItem("pa-api-token")).toBe("session-secret");
-    expect(getApiToken()).toBe("session-secret");
+  it("stores token in sessionStorage only", () => {
+    setApiToken("test-token");
+    expect(sessionStorage.getItem("pa-api-token")).toBe("test-token");
     expect(localStorage.getItem("pa-api-token")).toBeNull();
   });
 
-  it("does not retain a newly submitted invalid token", async () => {
-    vi.spyOn(api, "health").mockResolvedValue({ status: "ok", segments: 2, memories: 3 });
-    vi.spyOn(api, "assistantPersonality").mockRejectedValue(
-      new ApiError("Forbidden", 403, "/assistant/personality", { detail: "Forbidden" }),
-    );
-    render(<ConnectionPage />);
-
-    fireEvent.change(screen.getByLabelText("PA API Token"), { target: { value: "invalid" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存并验证" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Token 无效或已过期");
+  it("clears token correctly", () => {
+    setApiToken("to-clear");
+    clearApiToken();
     expect(sessionStorage.getItem("pa-api-token")).toBeNull();
-  });
-
-  it("shows a clear authentication error and can clear the session token", async () => {
-    sessionStorage.setItem("pa-api-token", "expired");
-    vi.spyOn(api, "health").mockResolvedValue({ status: "ok", segments: 2, memories: 3 });
-    vi.spyOn(api, "assistantPersonality").mockRejectedValue(
-      new ApiError("Unauthorized", 401, "/assistant/personality", { detail: "Unauthorized" }),
-    );
-    render(<ConnectionPage />);
-
-    fireEvent.click(screen.getByRole("button", { name: "验证连接" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Token 无效或已过期");
-    fireEvent.click(screen.getByRole("button", { name: "清除 Token" }));
-    expect(sessionStorage.getItem("pa-api-token")).toBeNull();
-  });
-});
-
-describe("Sidebar navigation", () => {
-  it("uses the exact route groups without deleted destinations", async () => {
-    render(<Sidebar />);
-
-    expect(screen.getByRole("heading", { name: "Today" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Assistant" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Life" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /对话|人格|运行/ })).not.toBeInTheDocument();
   });
 });

@@ -26,13 +26,13 @@ def test_background_audio_prefers_nvs_token_with_kconfig_fallback() -> None:
     assert 'ws_read.GetString("token", CONFIG_PA_SERVER_TOKEN)' in source
 
 
-def test_local_protocol_only_seeds_empty_nvs_token() -> None:
+def test_trimmed_firmware_never_writes_token_to_nvs() -> None:
+    """录音上传专用固件（v0.12 裁剪后）：token 只走"NVS 读 + Kconfig 回退"，
+    启动绝不把凭据写回 NVS——旧对话协议的播种写逻辑已随协议模块删除。"""
     source = _source("application.cc")
 
-    guard = 'if (ws_settings.GetString("token").empty()) {'
-    assert guard in source
-    guarded_block = source.split(guard, 1)[1].split("}", 1)[0]
-    assert 'ws_settings.SetString("token", CONFIG_PA_SERVER_TOKEN);' in guarded_block
+    assert 'GetString("token", CONFIG_PA_SERVER_TOKEN)' in source
+    assert 'SetString("token"' not in source
 
 
 def test_background_audio_uses_bearer_header_without_logging_token() -> None:

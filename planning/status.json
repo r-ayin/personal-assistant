@@ -3,26 +3,27 @@
   "displayName": "全自动个人助手",
   "currentStage": "development",
   "locked": false,
-  "version": "0.11.0",
-  "lastUpdated": "2026-08-11T00:00:00+08:00",
-  "taskType": "new-feature",
-  "taskName": "安全 Git 同步 + 实时语音应答增强",
+  "version": "0.12.0",
+  "lastUpdated": "2026-08-30T11:40:00+08:00",
+  "taskType": "refactor",
+  "taskName": "纯文字化大改造：砍实时对话 + 录音转写入库 + 记忆后端接入 + 前端生命记忆重构",
   "completedStages": [
     "requirements",
     "prd"
   ],
-  "notes": "v0.11 实时语音应答增强（实体回归中）：turn 状态机+generation guard 可取消、VAD 自适应噪声基线+宽容积分+8s 满帧保险、固件自定义唤醒词「江江」(MultiNet6) 与 Wi-Fi PSM 关停已刷写 ota_0；语音提速：xiaozhi 通道 LLM max_tokens=160 限长 + ASR small/beam=1（服务 8004 已重启上线，small 3.7s 预热）。安全 Git 同步主线：净化分支按计划推进，本机脏历史不推公开仓库。",
+  "notes": "v0.12 用户直导大改造（2026-08-30）：①记忆后端已全量替换为「个人助手融合记忆系统」（memory_bridge.py），旧后端 5 模块已删，248 测试基线。②彻底取消实时对话/语音交互：删除 xiaozhi/omni/perception/barrage/local-model 全部模块与路由，只保留文字聊天。③固件（scripts/xiaozhi-esp32）裁剪为只录音+上传：保留 background_audio PCM 直推 /ws/audio，删唤醒词/显示/对话协议/设备MCP；转写在服务器侧（asr.py），转写文本进记忆系统。④微信记录（5 聊天仓，829 会话）已接入时刻层：identity.json 确认本人=青树(石云鹏)、爱人=备注「有人知道她是一只折耳根宝宝吗」，时刻只从本人发言提取。⑤前端按 web/DESIGN.md「生命记忆」设计合约全面重构（framer-motion+gsap，最激进的动效），删除全部旧 JSX 与语音相关页面。",
   "activeWork": [
-    "真机复测分段时延：EOU→STT p95≤2s、STT→首Opus p95≤4s",
-    "噪声环境 VAD 结尾切段收尾（观察 8s 保险效果后决定是否收紧静音判定）",
-    "Type-C 音频输出方案评估：外接 I2S DAC/功放（零代码） vs 固件新增 USB UAC device"
+    "后端：实时对话模块删除 + 测试基线重建（开发代理执行中）",
+    "固件：xiaozhi-esp32 裁剪为录音上传专用（开发代理执行中）",
+    "前端：按 DESIGN.md 全面重构 11 个页面 + 全局氛围/转场系统（开发代理执行中）",
+    "微信时刻提取增量续跑（MOMENT_MAX_JUDGMENTS_PER_RUN 预算制）"
   ],
   "verification": {
-    "contracts": "tests/test_xiaozhi_session.py 12/12；真机分段时延（asr_ms/llm_ms/tts_ms）待复测",
-    "regression": "stub 全链路回归基线 268 passed / 3 skipped（v0.10 历史基线 224）",
-    "fixLoop": "LLM AssistantResponse 解包修复；VAD 15s 满帧空 ASR（噪声环境）→ 满帧保险降至 8s"
+    "contracts": "6 路并行验证代理：PA后端 PASS（160→161 passed）/前端 PASS（tsc+build 13页+vitest 9/9）/记忆核心 6/7（冒烟 14/14+8/8，身份过滤+红队回归全过）/固件 5/7（display 有意保留已文档化+固件目录文档已补）/红队 RISK→1 项已修/干净度 RISK（1 项跨项目误报）",
+    "regression": "PA pytest 161 passed / 2 skipped / 0 failed；e2e PASS；cli status OK；web tsc/build/test 三项全绿；冒烟双 8/8+14/14",
+    "fixLoop": "红队修复 6 项全落地：空白引用溯源绕过/大小写与全角 bot 绕过/黑名单误杀/行号漂移重复时刻/ingest source 穿越//inbox/upload filename 穿越（+响应健壮性）；冒烟测试守卫（_smoke_guard 备份恢复，防抹生产数据）"
   },
   "engine": {
-    "lastEngineAction": "2026-08-07T17:55:59Z"
+    "lastEngineAction": "2026-08-31T03:30:00Z"
   }
 }

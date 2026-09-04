@@ -11,7 +11,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from . import config, storage
+from . import config, memory_bridge, storage
 from .llm import get_llm
 
 SYSTEM_INTERVENTION = """[TASK:INTERVENTION]
@@ -62,7 +62,7 @@ class ProactiveEngine:
         self.notifier = notifier or CLINotifier()
 
     def check(self) -> list[dict]:
-        unprocessed = storage.memories_unprocessed()
+        unprocessed = memory_bridge.memories_unprocessed()
         if not unprocessed:
             return []
         triggers: list[dict] = []
@@ -89,5 +89,5 @@ class ProactiveEngine:
             self.notifier.notify(msg, ev, t["kind"])
             fired.append({"id": iid, "kind": t["kind"], "message": msg, "evidence": ev})
         # 标记已审视
-        storage.mark_memories_processed([m["id"] for m in unprocessed])
+        memory_bridge.mark_memories_processed([m["id"] for m in unprocessed])
         return fired

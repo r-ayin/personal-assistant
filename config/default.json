@@ -70,18 +70,20 @@
     }
   },
   "asr": {
-    "backend": "stub",
+    "backend": "faster_whisper",
     "language": "zh",
     "faster_whisper": {
-      "model_size": "small",
-      "device": "cuda",
-      "compute_type": "float16",
+      "model_size": "large-v3-turbo",
+      "device": "cpu",
+      "compute_type": "int8",
       "vad_filter": true,
       "beam_size": 1,
       "best_of": 1,
       "condition_on_previous_text": true
     },
-    "stub": {}
+    "stub": {
+      "allow_fake": false
+    }
   },
   "speaker": {
     "backend": "text",

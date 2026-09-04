@@ -53,7 +53,6 @@ def test_real_app_protects_data_apis_when_token_is_configured(monkeypatch) -> No
     from personal_assistant import api
 
     monkeypatch.setattr(api.config, "api_token", lambda: "config-token")
-    monkeypatch.setattr(api.xiaozhi_server, "warmup_asr", lambda: None)
     with TestClient(api.app) as client:
         assert client.get("/health").status_code == 200
         # /web/ 是静态豁免路径：已构建时返回 200；未构建时 404 而非 401，
@@ -69,6 +68,5 @@ def test_real_app_allows_local_development_without_a_token(monkeypatch) -> None:
     from personal_assistant import api
 
     monkeypatch.setattr(api.config, "api_token", lambda: "")
-    monkeypatch.setattr(api.xiaozhi_server, "warmup_asr", lambda: None)
     with TestClient(api.app) as client:
         assert client.get("/assistant/personality").status_code == 200

@@ -1,43 +1,51 @@
-import { Bot, Eye, Radio, Server } from "lucide-react";
+"use client";
 
-export type ServiceState = "online" | "offline" | "idle" | "error" | "loading";
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import { api } from "@/lib/api";
+import { EASE } from "@/lib/motion";
+import type { StatusPayload } from "@/lib/types";
 
-export interface StatusStripProps {
-  pa: ServiceState;
-  model: ServiceState;
-  perception: ServiceState;
-  overlay: ServiceState;
-}
+/** 底部一线墨痕呼吸条；悬浮浮现全局计数（每 60s 静默轮询） */
+export default function StatusStrip() {
+  const [status, setStatus] = useState<StatusPayload | null>(null);
+  const [hover, setHover] = useState(false);
 
-const LABELS: Record<ServiceState, string> = {
-  online: "在线",
-  offline: "离线",
-  idle: "待机",
-  error: "异常",
-  loading: "检查中",
-};
-
-export default function StatusStrip({ pa, model, perception, overlay }: StatusStripProps) {
-  const items = [
-    { key: "pa", label: "PA", state: pa, icon: Server },
-    { key: "model", label: "模型", state: model, icon: Bot },
-    { key: "perception", label: "感知", state: perception, icon: Eye },
-    { key: "overlay", label: "浮层", state: overlay, icon: Radio },
-  ];
+  useEffect(() => {
+    let alive = true;
+    const load = () => api.status().then((s) => { if (alive) setStatus(s); }).catch(() => {});
+    load();
+    const timer = setInterval(load, 60_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
 
   return (
-    <section className="status-strip" aria-label="运行状态">
-      {items.map((item) => {
-        const Icon = item.icon;
-        return (
-          <div className="status-item" key={item.key} data-testid={`status-${item.key}`}>
-            <Icon size={14} aria-hidden="true" />
-            <span>{item.label}</span>
-            <span className={`status-dot status-${item.state}`} aria-hidden="true" />
-            <strong>{LABELS[item.state]}</strong>
-          </div>
-        );
-      })}
-    </section>
+    <div
+      className="status-hit"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      aria-hidden="true"
+    >
+      <div className="status-bar" />
+      {status && hover && (
+        <motion.div
+          initial={{ opacity: 0, y: 6, filter: "blur(4px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          transition={{ duration: 0.4, ease: EASE.out }}
+          style={{
+            position: "absolute", bottom: 16, right: 24,
+            display: "flex", gap: 14, padding: "6px 14px",
+            borderRadius: 999, border: "1px solid var(--edge)",
+            background: "var(--porcelain-2)", boxShadow: "var(--elev-pop)",
+            fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-weak)",
+            pointerEvents: "none",
+          }}
+        >
+          <span>记忆 {status.memories}</span>
+          <span>日程 {status.events}</span>
+          <span>提醒 {status.reminders}</span>
+        </motion.div>
+      )}
+    </div>
   );
 }

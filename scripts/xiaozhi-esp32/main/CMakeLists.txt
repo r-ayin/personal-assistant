@@ -1,4 +1,4 @@
-# Define source files
+# Define source files - trimmed for recording-only mode (no dialogue/TTS/wake word/MCP)
 set(SOURCES "audio/audio_codec.cc"
             "audio/audio_service.cc"
             "audio/demuxer/ogg_demuxer.cc"
@@ -27,9 +27,6 @@ set(SOURCES "audio/audio_codec.cc"
             "display/lvgl_display/jpg/image_to_jpeg.cpp"
             "display/lvgl_display/jpg/jpeg_to_image.c"
             "protocols/protocol.cc"
-            "protocols/mqtt_protocol.cc"
-            "protocols/websocket_protocol.cc"
-            "mcp_server.cc"
             "system_info.cc"
             "application.cc"
             "ota.cc"
@@ -56,7 +53,6 @@ list(APPEND SOURCES
     "boards/common/i2c_device.cc"
     "boards/common/knob.cc"
     "boards/common/power_save_timer.cc"
-    "boards/common/press_to_talk_mcp_tool.cc"
     "boards/common/sleep_timer.cc"
     "boards/common/sy6970.cc"
     "boards/common/system_reset.cc"
@@ -891,12 +887,7 @@ if(CONFIG_USE_AUDIO_PROCESSOR)
 else()
     list(APPEND SOURCES "audio/processors/no_audio_processor.cc")
 endif()
-if(CONFIG_IDF_TARGET_ESP32S3 OR CONFIG_IDF_TARGET_ESP32P4)
-    list(APPEND SOURCES "audio/wake_words/afe_wake_word.cc")
-    list(APPEND SOURCES "audio/wake_words/custom_wake_word.cc")
-else()
-    list(APPEND SOURCES "audio/wake_words/esp_wake_word.cc")
-endif()
+# Wake word sources removed - recording-only mode (no wake word detection)
 
 # Auto Select Additional Sources
 if (CONFIG_USE_ESP_BLUFI_WIFI_PROVISIONING)
@@ -1025,16 +1016,9 @@ if(CONFIG_IDF_TARGET_ESP32)
                              )
 endif()
 
-# Include EspVideo if target is ESP32S3 or ESP32P4
+# esp_video.cc / esp32_camera.cc removed - recording-only mode has no camera/MCP tools
 if(CONFIG_IDF_TARGET_ESP32S3 OR CONFIG_IDF_TARGET_ESP32P4)
-    list(APPEND SOURCES "boards/common/esp_video.cc"
-                        "boards/common/rndis_board.cc"
-                        )
-endif()
-
-# Include Esp32Camera if target is ESP32S3
-if(CONFIG_IDF_TARGET_ESP32S3)
-    list(APPEND SOURCES "boards/common/esp32_camera.cc")
+    list(APPEND SOURCES "boards/common/rndis_board.cc")
 endif()
 
 set(MAIN_PRIV_REQUIRES_EXTRA "")

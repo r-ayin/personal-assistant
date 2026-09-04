@@ -12,7 +12,6 @@
 #include <memory>
 #include <functional>
 
-#include "protocol.h"
 #include "ota.h"
 #include "audio_service.h"
 #include "device_state.h"
@@ -22,7 +21,6 @@
 // Main event bits
 #define MAIN_EVENT_SCHEDULE             (1 << 0)
 #define MAIN_EVENT_SEND_AUDIO           (1 << 1)
-#define MAIN_EVENT_WAKE_WORD_DETECTED   (1 << 2)
 #define MAIN_EVENT_VAD_CHANGE           (1 << 3)
 #define MAIN_EVENT_ERROR                (1 << 4)
 #define MAIN_EVENT_ACTIVATION_DONE      (1 << 5)
@@ -34,12 +32,6 @@
 #define MAIN_EVENT_STOP_LISTENING       (1 << 11)
 #define MAIN_EVENT_STATE_CHANGED        (1 << 12)
 
-
-enum AecMode {
-    kAecOff,
-    kAecOnDeviceSide,
-    kAecOnServerSide,
-};
 
 class Application {
 public:
@@ -85,8 +77,6 @@ public:
     void Alert(const char* status, const char* message, const char* emotion = "", const std::string_view& sound = "");
     void DismissAlert();
 
-    void AbortSpeaking(AbortReason reason);
-
     /**
      * Toggle chat state (event-based, thread-safe)
      * Sends MAIN_EVENT_TOGGLE_CHAT to be handled in Run()
@@ -106,18 +96,13 @@ public:
     void StopListening();
 
     void Reboot();
-    void WakeWordInvoke(const std::string& wake_word);
     bool UpgradeFirmware(const std::string& url, const std::string& version = "");
     bool CanEnterSleepMode();
-    void SendMcpMessage(const std::string& payload);
-    void RegisterMcpBroadcastCallback(std::function<void(const std::string&)> callback);
-    void SetAecMode(AecMode mode);
-    AecMode GetAecMode() const { return aec_mode_; }
     void PlaySound(const std::string_view& sound);
     AudioService& GetAudioService() { return audio_service_; }
 
     /**
-     * Background audio collection (dual-mode: wake word + continuous recording)
+     * Background audio collection (recording-only mode: PCM push to server)
      */
     void StartBackgroundAudio();
     void StopBackgroundAudio();
@@ -126,8 +111,6 @@ public:
     
     /**
      * Reset protocol resources (thread-safe)
-     * Can be called from any task to release resources allocated after network connected
-     * This includes closing audio channel, resetting protocol and ota objects
      */
     void ResetProtocol();
 
@@ -137,22 +120,15 @@ private:
 
     std::mutex mutex_;
     std::deque<std::function<void()>> main_tasks_;
-    std::unique_ptr<Protocol> protocol_;
     EventGroupHandle_t event_group_ = nullptr;
     esp_timer_handle_t clock_timer_handle_ = nullptr;
     DeviceStateMachine state_machine_;
-    ListeningMode listening_mode_ = kListeningModeAutoStop;
-    AecMode aec_mode_ = kAecOff;
     std::string last_error_message_;
     AudioService audio_service_;
     std::unique_ptr<Ota> ota_;
 
-    std::function<void(const std::string&)> mcp_broadcast_callback_;
-
     bool has_server_time_ = false;
-    bool aborted_ = false;
     bool assets_version_checked_ = false;
-    bool play_popup_on_listening_ = false;  // Flag to play popup sound after state changes to listening
     int clock_ticks_ = 0;
     TaskHandle_t activation_task_handle_ = nullptr;
 
@@ -170,9 +146,6 @@ private:
     void HandleNetworkConnectedEvent();
     void HandleNetworkDisconnectedEvent();
     void HandleActivationDoneEvent();
-    void HandleWakeWordDetectedEvent();
-    void ContinueOpenAudioChannel(ListeningMode mode);
-    void ContinueWakeWordInvoke(const std::string& wake_word);
 
     // Activation task (runs in background)
     void ActivationTask();
@@ -180,10 +153,7 @@ private:
     // Helper methods
     void CheckAssetsVersion();
     void CheckNewVersion();
-    void InitializeProtocol();
     void ShowActivationCode(const std::string& code, const std::string& message);
-    void SetListeningMode(ListeningMode mode);
-    ListeningMode GetDefaultListeningMode() const;
     
     // State change handler called by state machine
     void OnStateChanged(DeviceState old_state, DeviceState new_state);

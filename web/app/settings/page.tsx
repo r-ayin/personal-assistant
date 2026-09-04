@@ -1,5 +1,3 @@
-import { redirect } from "next/navigation";
-
-export default function SettingsPage() {
-  redirect("/settings/runtime/");
-}
+"use client";
+import LegacyRedirect from "@/components/LegacyRedirect";
+export default function Page() { return <LegacyRedirect from="/settings/" />; }

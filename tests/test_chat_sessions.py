@@ -13,7 +13,6 @@ def _headers() -> dict[str, str]:
 def test_chat_endpoint_returns_usage_and_reuses_conversation_id(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(api.config, "api_token", lambda: "session-test-token")
     monkeypatch.setattr(api.storage.config, "sqlite_path", lambda: tmp_path / "chat-session.db")
-    monkeypatch.setattr(api.xiaozhi_server, "warmup_asr", lambda: None)
     chat.CONVERSATIONS.clear()
 
     class DetailedLLM:
@@ -36,8 +35,8 @@ def test_chat_endpoint_returns_usage_and_reuses_conversation_id(tmp_path, monkey
     model = DetailedLLM()
     monkeypatch.setattr(chat, "get_llm", lambda: model)
     monkeypatch.setattr(chat, "get_embedder", lambda: object())
-    monkeypatch.setattr(chat.recall, "hybrid_recall", lambda *_a, **_k: type("R", (), {"items": []})())
-    monkeypatch.setattr(chat.memory, "search", lambda *_a, **_k: [])
+    monkeypatch.setattr(chat.memory_bridge, "hybrid_recall", lambda *_a, **_k: type("R", (), {"items": []})())
+    monkeypatch.setattr(chat.memory_bridge, "search", lambda *_a, **_k: [])
     monkeypatch.setattr(chat, "recent_perception_segments", lambda **_k: [])
 
     with TestClient(api.app) as client:
@@ -68,7 +67,6 @@ def test_chat_endpoint_returns_usage_and_reuses_conversation_id(tmp_path, monkey
 def test_chat_endpoint_keeps_conversations_isolated(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(api.config, "api_token", lambda: "session-test-token")
     monkeypatch.setattr(api.storage.config, "sqlite_path", lambda: tmp_path / "chat-isolation.db")
-    monkeypatch.setattr(api.xiaozhi_server, "warmup_asr", lambda: None)
     chat.CONVERSATIONS.clear()
 
     class DetailedLLM:
@@ -82,8 +80,8 @@ def test_chat_endpoint_keeps_conversations_isolated(tmp_path, monkeypatch) -> No
     model = DetailedLLM()
     monkeypatch.setattr(chat, "get_llm", lambda: model)
     monkeypatch.setattr(chat, "get_embedder", lambda: object())
-    monkeypatch.setattr(chat.recall, "hybrid_recall", lambda *_a, **_k: type("R", (), {"items": []})())
-    monkeypatch.setattr(chat.memory, "search", lambda *_a, **_k: [])
+    monkeypatch.setattr(chat.memory_bridge, "hybrid_recall", lambda *_a, **_k: type("R", (), {"items": []})())
+    monkeypatch.setattr(chat.memory_bridge, "search", lambda *_a, **_k: [])
     monkeypatch.setattr(chat, "recent_perception_segments", lambda **_k: [])
 
     with TestClient(api.app) as client:

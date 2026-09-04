@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>WebAIM: Contrast and Color Accessibility - Understanding WCAG 2 Contrast and Color Requirements</title>
+	<link rel="shortcut icon" href="/media/favicon.ico">
+	<link rel="home" href="/">
+	<link rel="search" href="/search/">
+	<link rel="alternate" href="https://webaim.org/blog/feed" type="application/rss+xml" title="WebAIM Blog">
+
+	<script async src="https://www.googletagmanager.com/gtag/js?id=G-Y41PF8WV9X"></script>
+	<script>
+  	window.dataLayer = window.dataLayer || [];
+  	function gtag(){dataLayer.push(arguments);}
+  	gtag('js', new Date());
+  	gtag('config', 'G-Y41PF8WV9X');
+	</script>
+	
+	<link href="/styles/main.css" rel="stylesheet" type="text/css">
+	<link href="/styles/print.css" rel="stylesheet" type="text/css" media="print">
+	<script src="/media/scripts/jquery.js"></script>
+	<script src="/media/scripts/main.js"></script>
+	<link href='https://fonts.googleapis.com/css?family=Roboto:400' rel='stylesheet' type='text/css'>
+	<link href='https://fonts.googleapis.com/css?family=Kameron:400,700' rel='stylesheet' type='text/css'>
+	<link href="/styles/documents.css?ver=2" rel="stylesheet">
+		<link href="https://fonts.googleapis.com/css?family=Open+Sans:400,400i,700" rel="stylesheet">
+
+<!--[if lt IE 9]>
+	<script type="text/javascript" src="http://html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+</head>
+<body>
+
+
+<div id="headcontainer" class="clearfix" style="background-image: url(/media/banners/articles.jpg)">
+<header>
+	<div id="skiptocontent"><a href="#maincontent">skip to main content</a></div>
+	
+	<h2><a href="/"><img src="/media/logo.png" width="315" height="83" alt="WebAIM - Web Accessibility In Mind"></a></h2>
+
+	<nav>
+		<h2 class="hidden">Main Navigation</h2>
+		<ul>
+			<li><a href="/services/">Services</a></li>
+			<li class="current"><a href="/articles/">Articles</a></li>
+			<li><a href="/resources/">Resources</a></li>
+			<li><a href="/projects/">Projects</a></li>
+			<li><a href="/community/">Community</a></li>
+		</ul>
+	</nav>
+	<div id="search">
+		<form method="get" role="search" action="/search/" id="sitesearch">
+			<p class="search"><span><label for="q">Search:</label> <input type="text" name="q" id="q"><input type="image" src="/media/template/search.svg" alt="Submit Search"></span></p>
+		</form>
+		
+		<p class="intro"><a href="/intro">Introduction to Web Accessibility</a></p>
+		
+		<p class="training"><a href="/services/training">WebAIM Training</a></p>
+	</div>
+
+</header>
+</div>
+
+<main id="maincontainer" class="clearfix">
+
+<article id="maincontent">
+
+<h1>Contrast and Color Accessibility<br><span class="subtitle">Understanding WCAG 2 Contrast and Color Requirements</span></h1>
+
+<p id="breadcrumbs"><span class="hidden">You are here: </span><a href="/">Home</a> &gt; <a href="/articles/">Articles</a> &gt; Contrast and Color Accessibility</p>
+
+
+<nav>
+  <h2>Article Contents</h2>
+	<ol>
+	<li class="currentpage"><span class="hidden">Current page: </span>Page 1: Understanding WCAG 2 Contrast and Color Requirements
+	  <ol>
+		<li><a href="#intro">Introduction</a></li>
+		<li><a href="#defining">Defining Colors</a></li>
+		<li><a href="#ratio">WCAG 2 "Contrast Ratio"</a></li>
+		<li><a href="#sc143">1.4.3 Contrast (Minimum)</a></li>
+		<li><a href="#sc146">1.4.6 Contrast (Enhanced)</a></li>
+		<li><a href="#sc1411">1.4.11 Non-text Contrast</a></li>
+		<li><a href="#sc141">1.4.1 Use of Color</a></li>
+	  </ol>
+	</li>
+	<li>Page 2: <a href="evaluating">Evaluating Contrast and Color Use</a></li>
+	<li>Page 3: <a href="devtools">Evaluating Contrast with Chrome DevTools</a></li>
+	</ol>
+</nav>
+<div class="section" id="intro">
+
+<h2>Introduction</h2>
+
+<p>Contrast and color use are vital to accessibility. Users, including users with visual disabilities, must be able to perceive content on the page. There is a great deal of fine print and complexity within the Web Content Accessibility Guidelines (WCAG) 2 that can easily confuse web content creators and web accessibility evaluators. This article pulls together the terms and principles needed to understand WCAG 2 requirements for contrast and color.</p>
+</div>
+
+<div class="section" id="defining">
+	<h2>Defining Colors</h2>
+		  <p>Colors can be defined in a few ways. For example, <span style="color:#6161FF; background-color: #fff;">this shade of blue</span> may commonly be defined in three different ways in webpage  styles:</p>
+          <ul>
+            <li><code>rgb (97,  97, 255)</code>: The amount of red, green, and blue that form a color are each presented  as a number between 0 and 255. </li>
+            <li><code>#6161FF</code>:  This is a &quot;hexadecimal&quot; format where the red/green/blue values are  presented as a combination of six letters or numbers. Typically called  &quot;Hex,&quot; this is a very common format in webpages.</li>
+            <li><code>hsl (240,  100%, 69%)</code>: Hue, saturation, and lightness map more closely to the way  people perceive colors. Changing the &quot;lightness&quot; of a color will change its contrast ratio to another color.</li>
+          </ul>
+          <p>Alpha, which is the opacity or transparency of a color, will  also impact contrast. Alpha is presented as a number between 0 (completely  transparent) and 1 (completely opaque). Reducing the alpha for an element will reduce its contrast because you are allowing an underlying color to  bleed through.</p>
+</div>
+
+<div class="section" id="ratio">
+  <h2>WCAG 2 &quot;Contrast Ratio&quot;</h2>
+  <p>In WCAG 2, contrast is a measure of the difference in perceived &quot;luminance&quot; or brightness between two colors (the phrase &quot;color contrast&quot; is never used in WCAG). This brightness difference is expressed as a ratio ranging from 1:1 (e.g. white on white) to 21:1 (e.g., black on a white). To give a frame of reference, on a white background:</p>
+<ul>
+    <li>Pure red (#FF0000) has a ratio of 4:1. <span style="color: #ff0000; background-color: #fff;">I am red text.</span></li>
+    <li> Pure green (#00FF00) has a very low ratio of 1.4:1. <span style="color: #00FF00; background-color: #fff;">I am green text.</span> </li>
+    <li>Pure blue (#000FF) has a contrast ratio of 8.6:1.<span style="color: #0000ff; background-color: #fff;">I am blue text</span>.</li>
+  </ul>
+  <div class="important">
+		<div class="title">Important</div>
+		<p>If text and background colors are swapped, the contrast ratio remains the same.</p>
+	</div>
+	<p>Three success criteria in WCAG 2 address contrast:</p>
+<ul>
+    <li><a href="https://www.w3.org/TR/WCAG21/#contrast-minimum">1.4.3 Contrast (Minimum)</a> </li>
+    <li><a href="https://www.w3.org/TR/WCAG21/#contrast-enhanced">1.4.6 Contrast (Enhanced)</a></li>
+    <li><a href="https://www.w3.org/TR/WCAG21/#non-text-contrast">1.4.11 Non-text Contrast</a>. </li>
+  </ul>
+	<p>One additional success criterion, <a href="https://www.w3.org/TR/WCAG21/#use-of-color">1.4.1 Use of Color</a>, references the contrast ratio as part of the requirement for links that are differentiated by color alone.</p>
+	<p>We will review these four success criteria in detail.</p>
+</div>
+
+<div class="section" id="sc143">
+  <h2>1.4.3 Contrast (Minimum)</h2>
+  <p>This Level AA requirement reads:</p>
+  <blockquote>
+    <p>The visual presentation of text and images of text has a contrast ratio of  at least 4.5:1, except for the following:</p>
+	  <ul>
+	    <li><strong>Large  Text:</strong>  Large-scale text and images of  large-scale text have a contrast ratio of at least 3:1;</li>
+	    <li><strong>Incidental:</strong> Text or images of text that are part of an inactive user interface component,  that are pure decoration, that are not visible to anyone, or that are part of a  picture that contains significant other visual content, have no contrast  requirement.</li>
+	    <li><strong>Logotypes:</strong> Text that is part of a logo or brand name has no contrast requirement.</li>
+    </ul>
+  </blockquote>
+  <p>Here are some examples of text with almost  exactly 4.5:1 contrast.</p>
+  <ul>
+		<li><span style="color: #767676; background-color: #fff	;">Gray (#767676) on white</span></li>
+		<li><span style="color: #CC21CC; background-color: #fff;">Purple (#CC21CC) white</span></li>
+		<li><span style="color: #000063; background-color: #808080;">Blue (#000063) on gray (#808080)</span></li>
+		<li><span style="color: #E60000; background-color: #FFFF47;">Red (#E60000) on yellow (#FFFF47)</span></li>
+  </ul>
+  <p> For many of us, some of these combinations are not very readable. That is why 4.5:1 is the <em>minimum</em>  required by WCAG..</p>
+  <div class="note">
+	<div class="title">Important</div>
+	<p>You cannot round a contrast ratio up to 4.5:1. For example, #777777&mdash;a commonly-used shade of gray with a 4.47:1 contrast ratio&mdash;does not meet this requirement</p>
+</div>
+	
+	<div class="section" id="images">
+	  <h3>Images of text</h3>
+	  <p>These contrast requirements also apply to text within a graphic, called &quot;images of text&quot; in WCAG 2.</p>
+	  <div class="example">
+	<div class="title">Example</div>
+	  <p>The white text in the image below has insufficient contrast.</p>
+	  <p><img src="media/text-in-image.png" width="555" height="223" alt="Image with white text on a light blue background. The text reads '50 most played songs by genre'"/></p>
+	</div> 
+  </div>
+	
+		<div class="section" id="outline">
+	  <h3>Outline and halo</h3>
+		<p>Text effects, like outlines, can impact perceived contrast. WCAG 2 states that the color of a text outline or border can be used as the text or foreground color when measuring contrast.</p>
+		<p style="text-outline"><img src="media/text-outline.png" width="524" height="158" alt="text with a blue outline and solid blue text that have the same contrast ratio"/></p>
+	  <p>A text glow/halo around the letters can be used as the background color.</p>
+		<p><img src="media/glow.png" width="519" height="124" alt="text with a blue background and text with a blue glow have the same contrast ratio"/></p>
+	
+	</div>
+	
+	<div class="section" id="exceptions143">
+		<h3>Exceptions</h3>
+		<p>There are three exceptions to the 4.5:1 contrast requirement: large text, incidental text, and logotypes.</p>
+		<div class="section" id="large">
+		  <h4>Large text</h4>
+		  <p>Large text is easier to read, so the contrast requirement is reduced to 3:1. WCAG defines large text as text that is 18pt and larger, or 14pt and larger <em>if</em> it is bold.</p>
+		<p>For example:</p>
+			<ul>
+			  <li><span style="color:#949494; background-color:#fff; font-size:18pt;">Gray (#949494)  18 point text on white</span> </li>
+			  <li><span style="color:#C86FF1; background-color:#fff; font-size:14pt; font-weight:bold;">Purple (#C86ff1)  14 point + bold text on white</span></li>
+		  </ul>
+		<div class="note">
+			<div class="title">Note</div>
+			<ul>
+			  <li>In web pages, pixels are much more common for text size than points. 18 points maps to 24 pixels and 14 points to approximately 18.67 pixels.</li>
+			  <li>In CSS, bold text typically has <code>font-weight:bold</code>, or <code>font-weight:700</code> or greater.</li></ul>
+		</div>	
+			<p>Images of text have the same requirements, but it can be difficult or impossible to measure text size or font weight in an image.</p>
+		
+	  </div>
+		
+	  <div class="section" id="incidental">
+		<h4>Incidental</h4>
+		<p>WCAG 2.0 defines four types of &quot;incidental&quot; text that are not required to meet the contrast requirements.</p>
+		<ul>
+		  <li><strong>Inactive:</strong> An inactive element, like a disabled Submit button ( 
+		    <button disabled="disabled">Submit</button> 
+		    ), is identified visually by its lower-contrast state.</li>
+		  <li><strong>Pure decoration:</strong> Decorative text that is not meant to be read. An example of this might be a picture of a bookshelf on a library homepage. The titles of the books are not meant to be read by the user.</li>
+		  <li><strong>Not visible to anyone:</strong> Text that is meant to be hidden, like an invisible <a href="/techniques/skipnav/">skip link</a> would not need to meet any contrast requirements until it becomes visible. </li>
+		  <li><strong>Part of a picture that contains significant other visual content:</strong> Text that is not an important part of the information in the image, like a name tag on the shirt of a person in a photo of a party, does not need to meet any contrast requirements.</li>
+	    </ul>
+		  <div class="note">
+			<div class="title">Note</div>
+			<p>As a rule of thumb, text that would be part of the image's alternative text should probably meet contrast requirements while text that would not be added to alternative text can usually be considered incidental.</p>
+		</div>
+	  </div>
+		
+		<div class="section" id="logotypes">
+			<h4>Logotypes</h4>
+			<p>Text that is part of a logo or brand name has no contrast requirement. If we look back at the example of an image of text used earlier, the amazon music logo would be exempt.</p>
+			<p><img src="media/logo-exempt.png" width="555" height="223" alt="The word 'music' is white on a light blue background, but it is part of the amazon music logo"/></p>
+		</div>
+		
+  </div>
+
+	<div class="section" id="not143">
+		<h3>Not mentioned</h3>
+		<p>A couple important contrast considerations are not mentioned in 1.4.3.</p>
+		
+		<div class="section" id="gradients">
+			<h4>Gradients, background images, and transparencies</h4>
+			<p>Text over gradients, semi-transparent colors, and background images still need to meet contrast requirements, but WCAG does not provide any guidance on how to measure their contrast. We recommend usually testing the area where contrast is lowest.</p>
+		</div>
+
+		<div class="section" id="changes">
+			<h4>Color changes on hover, focus, etc.</h4>
+			<p>Text sometimes changes color while the user interacts with it using a mouse or keyboard. CSS can be used to define hover, focus, or active states for interactive elements. There is no mention of special consideration for these changes in text color, so text in all these states must  meet the same contrast requirements (and must be evaluated independently).</p>
+		</div>
+		
+  </div>
+	
+</div>
+
+<div class="section" id="sc146">
+  <h2>1.4.6 Contrast (Enhanced)</h2>
+  <p>The only difference between this Level AAA success criterion and Level AA 1.4.3 is that contrast requirements are more stringent. It requires <strong>7:1</strong> contrast for normal text and <strong>4.5:1</strong> for large text. Although higher contrast is often recommended, Level AA conformance is the requirement within common laws and standards, so we focus on 1.4.3 requirements throughout this article.</p> 
+</div>
+
+<div class="section" id="sc1411">
+	<h2>1.4.11 Non-text Contrast</h2>
+	<p>WCAG 2.1, published in June 2018, moves contrast requirements beyond text. 1.4.11 Non-text Contrast (Level AA) reads:</p>
+  <blockquote>
+		<p>The visual presentation of the  following have a contrast ratio of at least 3:1 against adjacent color(s):</p>
+		<ul>
+		  <li><strong>User  Interface Components:</strong> Visual information required to identify user interface components and states,  except for inactive components or where the appearance of the component is  determined by the user agent and not modified by the author;</li>
+		  <li><strong>Graphical  Objects:</strong> Parts  of graphics required to understand the content, except when a particular  presentation of graphics is essential to the information being conveyed.</li>
+		</ul>
+  </blockquote>
+	<p>There is one notable difference in how  contrast requirements are applied. Contrast requirements in WCAG 2.0 are between text and background, but 1.4.11 requires contrast of at least 3:1 against <em>adjacent color(s)</em>&quot; which means you may need to measure contrast in more than one place. A non-text element may have different contrast on one side than the other (like a wedge in a pie chart), or it may contain different-colored components that need 3:1 contrast with each other.</p>
+	
+	<div class="example">
+	  <div class="title">Example</div>
+		<p>A triangle-shaped icon with an exclamation mark is used to alert the user to something important.</p>
+		<p><img src="media/important-fill.png" width="56" height="56" alt="icon"/></p>
+	  <p>This graphic is composed of two important shapes—the exclamation mark and the triangle (usually reserved for alerts like these). That means there are 2 contrast ratios to consider:</p>
+		<ol>
+		  <li>The contrast ratio between the white exclamation mark and the red triangle, which is over 3:1</li>
+		  <li> The contrast ratio between the red triangle and the gray background, which is less than 3:1.  </li>
+	  </ol>
+		<p>This icon does  not meet 1.4.11.</p>
+	</div>
+	
+	<div class="section" id="uicomponents">
+	  <h3>User Interface Components</h3>
+	  <p>There are two types of non-text elements that 1.4.11 says must have 3:1 contrast. The first are &quot;User Interface Components,&quot; which are controls for distinct functions. For example, in a group of linked social media icons, each icon is a distinct user interface component.</p>
+	  <p><img src="media/components.png" width="276" height="60" alt="Facebook, Twitter, Google+, YouTube, and Instagram icons"/></p>
+	
+	
+	  <div class="section" id="states">
+		<h4>States</h4>
+		<p>Each state of the component must also have 3:1 contrast. States are temporary changes in a component, usually because of a user interaction, such as hovering with a mouse or tabbing with a keyboard.</p>
+		<div class="example">
+		  <div class="title">Example</div>
+			<p>When a user hovers over a custom checkbox, it turns bright blue (#00B0F0).</p>
+			<p><img src="media/state.png" width="377" height="38" alt=""/></p>
+			<p>This checkbox has 2.5:1 contrast in the hover state, so it fails.</p>
+		</div>  
+	</div>
+		
+		<div class="section" id="determined">
+			<h4>Except when &quot;determined by user agent&quot;</h4>
+			<p>If you use the default styles provided by the browser, then these contrast requirements do not apply.</p>
+		  <div class="example">
+			<div class="title">Example</div>
+				<p>In Chrome, the default border for a text box has 2.4:1 contrast:</p>
+			<p><img src="media/textbox-chrome.png" width="318" height="49" alt="First Name text box"/></p>
+				<p>This outline is well below the 3:1 threshold, but since this color was &quot;determined&quot; by the browser and was not customized by the author, it is exempt. Because of the low default contrast, we recommend using CSS to increase the contrast for text boxes and other form inputs.</p>
+		  </div>
+			<p>The most common example of a low contrast &quot;state&quot; is the an outline that appears when an element has keyboard focus. For example, a bright blue outline  would be fairly distinctive on a white background but less visible against some colors, and can be almost invisible against a bright blue background.</p>
+			<p><img src="media/outline-chrome.png" width="490" height="75" alt="nearly invisible focus outline around the text 'Follow your interests'"/></p>
+			<p>This bright blue outline was a common for several years, especially in Chrome. Now, the keyboard outline in Chrome and Edge has both a dark and white line, giving it good contrast against any background.  Firefox and IE use a dotted black line, which will have low contrast on a dark background. Instead of worrying about changing browser support, use the CSS :focus and outline properties to customize a focus indicator that always has at least 3:1 contrast while also matching your site design and aesthetics. While designing or testing these outlines, pay close attention to areas like headers and footers that often have different background colors.</p>
+			
+			<div class="note">
+ 				<div class="title">Note</div>
+				<p>If there is no visible indication of keyboard focus, this is a failure of <a href="https://www.w3.org/TR/WCAG21/#focus-visible">2.4.7 – Focus Visible (Level AA)</a>.</p>
+			</div>
+			
+		</div>
+		
+  </div>
+	
+	<div class="section" id="graphical">
+		<h3> Graphical Objects</h3>
+		<p>The second type of non-text element covered in this success criterion are &quot;graphical objects&quot;. There are a couple key terms within this definition.</p>
+		
+		<div class="section" id="required">
+			<h4>&quot;Required to understand the content&quot;			</h4>
+			<p>For something to be defined as a graphical object that needs 3:1 contrast, it must be &quot;required to understand the content.&quot;</p>
+		  <div class="example">
+				<div class="title">Example</div>
+			<p>A Twitter icon that is a link would need 3:1 contrast. But if the link also includes the word "Twitter" (with at least a 4.5:1 contrast ratio), then the icon is no longer required to understand the content, so it does not have any contrast requirement.</p>
+				<p><img src="media/twitter-fixed.png" width="113" height="48" alt="Light green Twitter icon followed by the word 'Twitter'"/></p>
+			</div>
+		</div>
+		
+		<div class="section" id="essential">
+		  <h4>&quot;…except when a particular presentation is essential&quot;</h4>
+			<p>Certain types of images may need to be presented in lower contrast so they don't lose meaning or purpose. A heat map must use low-contrast colors so that underlying page is still visible.</p>
+			
+			<div class="example">
+				<div class="title">Example</div>
+		  		<p><img src="media/heatmap.jpg" width="500" height="334" alt="Heat map of a Wikipedia page"/></p>
+			</div>
+			
+			<p>Real-life imagery, like photos and screenshots, also fall into this category. So do logos.</p>
+		</div>
+		
+  </div>
+	
+</div>
+
+
+<div class="section" id="sc141">
+	<h2>1.4.1 Use of Color</h2>
+	<p>WCAG 2 does not prohibit any specific color or color combination, such as red and green. The previous success criteria require that text and non-text elements have sufficient contrast. Success Criterion 1.4.1, a Level A requirement, prohibits using color alone to present meaningful content or instructions. It reads:</p>
+	<blockquote>
+		<p>Color is not used as the only visual means of conveying information, indicating an action, prompting a response, or distinguishing a visual element.</p>
+	</blockquote>
+	<div class="example">
+	  <div class="title">Example</div>
+		<p>In this table of school assignments, the only indication that an assignment is missing or late is a background color. This is inaccessible to someone who is blind, and it may be confusing or inaccessible to someone who is colorblind or overrides page colors. This fails 1.4.3. </p>
+		<p><img src="media/color.png" width="292" height="133" alt="Screenshot of a spreadsheet where missing assignments are highlighted with a light red background, and late assignments have a yellow background."/></p>
+		<p>One way to address this is to add a second column for the status of the assignment (missing, complete, or late). You can still use color to reinforce information as long as color is not the only way this status is presented. In fact, it  makes the information more accessible to users who can see the color difference.</p>
+		<p><img src="media/color-fixed.png" width="397" height="129" alt="Screenshot of the repaired spreadsheet"/></p>
+	</div>
+
+	
+	<div class="section" id="instructions">
+	  <h3>Form instructions and errors</h3>
+	  <p>Color is often used in forms to identify required fields and form errors.</p>
+	
+		<div class="example">
+			<div class="title">Example</div>
+		  <p>For example, a required field that is left empty may be given a red border.</p>
+			  <p><img src="media/error.png" width="483" height="228" alt="Screenshot of a form where the email address field has a red border, indicating there is an error."/></p>
+		  <p>The red border is not enough on its own. The form field will also need an icon,</p>
+			  <p><img src="media/error-icon.png" width="469" height="61" alt="an alert icon has been added to the empty email field"/></p>
+		  <p>or an inline error message:</p>
+			  <p><img src="media/error-text.png" width="476" height="91" alt="an error message of 'E-mail address required' appears below the empty email field"/></p>
+			
+		</div>		
+    </div>
+	
+	<div class="section" id="only">
+		<h3>Color-only identification of links</h3>
+	  <p>WCAG 2 contrast and color rules overlap in one place: when color is used as the only way to identify a link. This does not apply to every link on a page. For example, links in the header of a webpage are understood to be links based on their position in the page, the use of whitespace, and often by a distinct font. This requirement refers to places where body text and link text appear together <em>and</em> where color alone is used to identify links (meaning the underline has been removed). For optimal accessibility and usability, maintain the underline on links. &nbsp;Otherwise two conditions must be met:</p>
+        <ol>
+          <li> 3:1 contrast between the body text and the link text.</li>
+          <li>A &quot;visual cue&quot; (not just a color change) that appears on keyboard focus (we also recommend mouse hover). The most common way to meet this is to underline the link on hover and focus.</li>
+        </ol>
+      <p>These requirements are in addition to the 1.4.3 text contrast requirement of 4.5:1. Meeting all three of these requirements simultaneously can be difficult.</p>
+		
+	  <div class="example">
+		<div class="title">Example</div>
+	    <p>A form ends with a line of text that reads: &quot;By submitting this form, you agree to our Terms of Use.&quot; The dark gray (#2E2E2E) body text has 13.6:1 contrast on a white background. The blue (#0079AD) &quot;Terms of Use&quot; link has 4.8:1 contrast, so text meets the contrast requirements.</p>
+	    <p><img src="media/link.png" width="425" height="38" alt=""/></p>
+		  <p>...but there is only 2.8:1 contrast between the body text and the link text. A slightly lighter shade of blue (#0081B8) would provide <em>just over</em> 3:1 contrast between the link and the body text:</p>
+		  <p><img src="media/link2.png" width="425" height="38" alt=""/> </p>
+		  <p>... but now it has less than 4.5:1 contrast with the background! With these text and background colors, it is impossible to use non-underlined links and also meet the WCAG guidelines.</p>
+	  </div>
+		
+		<p>This becomes increasingly difficult if the links change color on hover or focus  each of the colors in these states must also have at least a 4.5:1 contrast ratio difference with the background. WCAG 2.0 and Link Colors on the WebAIM blog explores the WCAG requirements for link colors in more depth.</p>
+		
+	</div>
+	
+</div>
+
+</article>
+<!--
+	-->
+<aside id="articlemeta">
+
+	<div id="updated">Last updated: <time datetime="2021-01-09">Jan 9, 2021</time></div>
+		
+				<div id="related">
+			<h2>Related Resources</h2>
+			<ul>
+			<li><a href="/articles/visual/">Visual Disabilities</a></li>
+<li><a href="/resources/contrastchecker/">Color Contrast Checker</a></li>
+<li><a href="/resources/linkcontrastchecker/">Link Contrast Checker</a></li>
+			</ul>
+		</div>
+		
+		
+</aside>
+</main>
+
+<footer>
+	<div id="footerresources">
+		<div class="footerblock">
+			<h2 id="copyright">&copy;2026 WebAIM</h2>
+			<p id="contact">			Utah State University<br>
+			6807 Old Main Hill<br>
+			Logan, UT 84322-6807<br>
+			<a class="phone" href="tel:4357977024">435.797.7024</a></p>
+		
+		<div id="checkpage">
+			<h2>Check Your Accessibility</h2>
+			<form action="https://wave.webaim.org/report" novalidate>
+				<label for="waveurl">Web site address:</label>
+				<input type="url" id="waveurl" name="url" title="Web site address">
+				<input type="submit" value="WAVE">
+			</form>
+		</div>
+		</div>
+		<div class="footerblock">
+			<h2 id="blog">From the Blog</h2>
+			<ul><li><a href="/blog/if-you-have-to-ask-is-it-accessible/">If you have to ask, is it accessible?</a></li><li><a href="/blog/an-extension-is-not-an-excuse/">An Extension is Not an Excuse</a></li><li><a href="/blog/tolerating-inaccessibility/">Tolerating Inaccessibility</a></li><li><a href="/blog/ask-aimee/">Ask AIMee: An accessible accessibility-focused AI chatbot</a></li></ul>		</div>
+		<div class="footerblock">
+			<h2 id="popular">Popular Resources</h2>
+			<ul>
+				<li><a href="/services/training/">WebAIM Training</a></li>
+				<li><a href="/standards/wcag/checklist">WCAG 2 Checklist</a></li>
+				<li><a href="/AIMee">Ask AIMee Chatbot</a></li>
+				<li><a href="/resources/contrastchecker">Color Contrast Checker</a></li>
+				<li><a href="/resources/designers/">Web Accessibility for Designers</a></li>
+				<li><a href="http://wave.webaim.org/">WAVE Web Accessibility Evaluation Tool</a></li>
+			</ul>
+		</div>
+		
+		<div id="footerlinks">
+			<ul>
+				<li><a id="footercontact" href="/contact">Contact</a></li>
+				<li><a id="footerabout" href="/about">About</a></li>
+				<li><a id="footerrss" href="/community/rss">RSS Feeds</a></li>
+				<li><a id="footerli" href="https://www.linkedin.com/company/webaim/">LinkedIn</a></li>
+				<li><a id="footercopyright" href="/copyright">Copyright &amp; Terms of Use</a></li>
+			</ul>
+		</div>
+		
+		<div class="clear"></div>
+	</div>
+
+</footer>
+
+</body>
+</html>

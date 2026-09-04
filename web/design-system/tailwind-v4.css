@@ -1,0 +1,93 @@
+/* design-system/tailwind-v4.css —— 由 tokens.css 派生的映射参考件。
+ *
+ * ⚠️ 单一真源是 app/globals.css 的 :root。本项目实际运行 Tailwind v3
+ * （web/tailwind.config.ts，其 theme.extend.colors 已对齐 v4 色板），
+ * 本文件仅按 OpenDesign 包格式记录 token → 工具类映射合约，供 agent 查阅，
+ * 不参与构建，应用代码不得 import。
+ */
+@import "./tokens.css";
+
+@theme {
+  /* 瓷白三段 */
+  --color-bg: var(--porcelain-0);
+  --color-surface: var(--porcelain-1);
+  --color-card: var(--porcelain-2);
+
+  /* 四强调色 + 加深档 */
+  --color-cinnabar: var(--cinnabar);
+  --color-cinnabar-deep: var(--cinnabar-deep);
+  --color-indigo: var(--indigo);
+  --color-indigo-deep: var(--indigo-deep);
+  --color-mineral: var(--mineral);
+  --color-mineral-deep: var(--mineral-deep);
+  --color-ochre: var(--ochre);
+  --color-ochre-deep: var(--ochre-deep);
+
+  /* 语义映射 */
+  --color-accent: var(--accent);
+  --color-interactive: var(--interactive);
+  --color-positive: var(--positive);
+  --color-caution: var(--caution);
+
+  /* 墨四级与文本三级 */
+  --color-ink-900: var(--ink-900);
+  --color-ink-700: var(--ink-700);
+  --color-ink-500: var(--ink-500);
+  --color-ink-300: var(--ink-300);
+  --color-fg: var(--text-main);
+  --color-fg-2: var(--text-dim);
+  --color-muted: var(--text-weak);
+
+  /* 线条 */
+  --color-border: var(--edge);
+  --color-border-active: var(--edge-active);
+
+  /* 字体 */
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-display: var(--font-serif);
+  --font-mono: var(--font-mono);
+
+  /* 字号阶梯 */
+  --text-xs: var(--text-xs);
+  --text-sm: var(--text-sm);
+  --text-base: var(--text-base);
+  --text-md: var(--text-md);
+  --text-lg: var(--text-lg);
+  --text-xl: var(--text-xl);
+  --text-2xl: var(--text-2xl);
+  --text-3xl: var(--text-3xl);
+
+  /* 空间 */
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+  --spacing-12: var(--space-12);
+  --spacing-16: var(--space-16);
+  --spacing-section: var(--section-gap);
+
+  /* 圆角 */
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-pill: var(--radius-pill);
+
+  /* 投影 */
+  --shadow-card: var(--elev-card);
+  --shadow-card-hover: var(--elev-card-hover);
+  --shadow-seal: var(--seal);
+  --shadow-focus-ring: var(--focus-ring);
+
+  /* 动效：生长与断裂（与 lib/motion.ts 的 EASE 一一对应） */
+  --ease-out: var(--ease-out);
+  --ease-overshoot: var(--ease-overshoot);
+  --ease-snap: var(--ease-snap);
+  --ease-ink: var(--ease-ink);
+  --duration-fast: var(--motion-fast);
+  --duration-base: var(--motion-base);
+  --duration-slow: var(--motion-slow);
+}

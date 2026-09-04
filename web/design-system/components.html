@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>年轮 · 墨迹 · 组件夹具</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  /* 本夹具自包含演示样式——页面实现以 app/globals.css 语义类为准。
+     token 单一真源是 app/globals.css 的 :root，tokens.css 是其参考镜像。 */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--porcelain-0); color: var(--text-main);
+    font-family: var(--font-sans); line-height: 1.8;
+    padding: 48px 24px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 64px; }
+  h1, h2, .serif { font-family: var(--font-serif); }
+  /* 页面大标题：实色墨 + 朱砂下划线自生长。
+     禁用 background-clip:text 渐变——子元素 transform 会打断裁剪导致整段隐形。 */
+  .pa-title {
+    position: relative; display: inline-block;
+    font-family: var(--font-serif); font-weight: 700; letter-spacing: 0.01em;
+    font-size: 34px; color: var(--ink-900); padding-bottom: 10px;
+  }
+  .pa-title::after {
+    content: ''; position: absolute; left: 0; bottom: 0; height: 3px; width: 100%;
+    background: var(--cinnabar); transform-origin: left center; transform: scaleX(0);
+    animation: title-underline 0.72s var(--ease-overshoot) 0.18s forwards;
+  }
+  @keyframes title-underline { to { transform: scaleX(1); } }
+  .spec-label { font-family: var(--font-mono); font-size: 12px; color: var(--text-weak); margin-bottom: 16px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+
+  /* 卡片：一层薄瓷，硬边细线 */
+  .glass-card {
+    background: var(--porcelain-2);
+    border: 1px solid var(--hairline); border-radius: var(--r-lg);
+    box-shadow: var(--elev-card);
+    padding: 24px;
+    transition: transform 0.4s var(--ease-overshoot), border-color 0.3s var(--ease-out), box-shadow 0.4s var(--ease-out);
+  }
+  .glass-card:hover { border-color: var(--hairline-mid); transform: translateY(-4px); box-shadow: var(--elev-card-hover); }
+
+  /* 按钮三态 */
+  .btn-lumen {
+    display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px;
+    border-radius: var(--r-md); border: none; cursor: pointer;
+    background: var(--ink-900); color: var(--porcelain-2);
+    font-weight: 600; font-size: 14px; box-shadow: 0 1px 2px var(--ink-18);
+    transition: transform 0.3s var(--ease-overshoot), box-shadow 0.26s var(--ease-out), background 0.26s var(--ease-out);
+  }
+  .btn-lumen:hover { background: var(--cinnabar); transform: translateY(-2px); box-shadow: 0 8px 20px -8px var(--cin-28); }
+  .btn-ghost {
+    display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px;
+    border-radius: var(--r-md); border: 1px solid var(--hairline-mid); background: transparent;
+    color: var(--text-dim); font-size: 14px; cursor: pointer;
+    transition: border-color 0.24s var(--ease-out), color 0.24s var(--ease-out), transform 0.3s var(--ease-overshoot);
+  }
+  .btn-ghost:hover { border-color: var(--ink-900); color: var(--ink-900); background: var(--ink-04); transform: translateY(-1px); }
+  .btn-danger {
+    display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px;
+    border-radius: var(--r-md); border: none; background: var(--cinnabar); color: #FFF7F5;
+    font-weight: 600; font-size: 14px; cursor: pointer;
+    transition: transform 0.3s var(--ease-overshoot), box-shadow 0.26s var(--ease-out);
+  }
+  .btn-danger:hover { transform: translateY(-2px); box-shadow: 0 8px 22px -8px var(--cin-28); }
+
+  /* 输入框 */
+  .input-glow {
+    width: 100%; max-width: 380px; padding: 12px 16px; border-radius: var(--r-md);
+    border: 1px solid var(--hairline-mid); background: var(--porcelain-2);
+    color: var(--text-main); font-size: 14px; outline: none;
+    transition: border-color 0.24s var(--ease-out), box-shadow 0.24s var(--ease-out);
+  }
+  .input-glow:focus { border-color: var(--ink-900); box-shadow: var(--focus-ring); }
+  .input-glow::placeholder { color: var(--text-weak); }
+
+  /* 时刻卡：盖了朱砂印的纸片；hover 左缘印线向下"盖章"生长 */
+  .firefly-seed {
+    position: relative; padding: 22px 22px 22px 26px; border-radius: var(--r-lg); cursor: pointer;
+    background: var(--porcelain-2);
+    border: 1px solid var(--hairline); border-left: 3px solid var(--cinnabar);
+    box-shadow: var(--elev-card); overflow: hidden;
+    transition: transform 0.42s var(--ease-overshoot), box-shadow 0.34s var(--ease-out);
+  }
+  .firefly-seed::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse 70% 60% at 12% 50%, var(--cin-08), transparent 70%);
+    animation: seed-bleed 7s var(--ease-ink) infinite;
+  }
+  .firefly-seed::after {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--cinnabar-deep); transform-origin: top center; transform: scaleY(0);
+    transition: transform 0.42s var(--ease-overshoot);
+  }
+  .firefly-seed:hover { transform: translateY(-4px) rotate(-0.28deg); box-shadow: var(--elev-card-hover); }
+  .firefly-seed:hover::after { transform: scaleY(1); }
+  @keyframes seed-bleed {
+    0%, 100% { opacity: 0.45; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.06); }
+  }
+  .seed-quote { font-family: var(--font-serif); font-size: 16px; line-height: 1.9; color: var(--text-main); }
+  .seed-narrative { font-size: 13px; color: var(--text-dim); margin-top: 10px; line-height: 1.8; }
+  .seed-meta { display: flex; gap: 8px; align-items: center; margin-top: 14px; font-family: var(--font-mono); font-size: 12px; color: var(--text-weak); }
+
+  /* 标签 Chips：四色 alpha 底，文字一律中文 */
+  .chip { display: inline-flex; align-items: center; padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+  .chip-cinnabar { background: var(--cin-10); color: var(--cinnabar-deep); }
+  .chip-mineral { background: var(--min-10); color: var(--mineral-deep); }
+  .chip-ochre { background: var(--och-10); color: var(--ochre-deep); }
+  .chip-indigo { background: var(--ind-10); color: var(--indigo-deep); }
+
+  /* 年轮核（Today 页核心）：同心环自生长，每第 7 环加粗（标记年） */
+  .ring-core { width: 148px; height: 148px; position: relative; display: grid; place-items: center; }
+  .ring-core svg { position: absolute; inset: 0; }
+  .ring-core circle { fill: none; stroke: var(--ring-line); stroke-width: 1; }
+  .ring-core circle.is-marker { stroke: var(--hairline-strong); stroke-width: 1.8; }
+  .ring-core .core-count { font-family: var(--font-mono); font-size: 24px; color: var(--ink-900); font-variant-numeric: tabular-nums; }
+
+  /* 空状态：一圈未长成的年轮 */
+  .empty-seed { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 48px 20px; text-align: center; }
+  .empty-seed-dot { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--hairline-mid); position: relative; }
+  .empty-seed-dot::after {
+    content: ''; position: absolute; inset: 13px; border-radius: 50%;
+    border: 1px solid var(--cin-28); animation: ring-form 4.2s var(--ease-out) infinite;
+  }
+  @keyframes ring-form { 0% { transform: scale(0.4); opacity: 0; } 38% { opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+  .empty-seed-text { color: var(--text-weak); font-size: 14px; font-family: var(--font-serif); }
+
+  /* 倒计时环 */
+  .countdown-ring { position: relative; width: 64px; height: 64px; }
+  .countdown-ring svg { transform: rotate(-90deg); }
+  .countdown-ring circle { fill: none; stroke-width: 3; stroke-linecap: round; }
+
+  /* 加载：光点呼吸，不用转圈 */
+  .loading-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cinnabar); animation: seed-pulse 2.2s var(--ease-out) infinite; }
+  @keyframes seed-pulse { 0%,100% { opacity: 0.3; transform: scale(1);} 50% { opacity: 0.9; transform: scale(1.3);} }
+
+  /* 色板 */
+  .swatch { width: 120px; }
+  .swatch-box { height: 56px; border-radius: var(--r-sm); border: 1px solid var(--hairline); margin-bottom: 8px; }
+  .swatch-name { font-size: 12px; font-weight: 500; }
+  .swatch-hex { font-family: var(--font-mono); font-size: 11px; color: var(--text-weak); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    .pa-title::after { transform: scaleX(1); animation: none; }
+    .firefly-seed::after { transform: scaleY(1); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1 class="pa-title">年轮 · 墨迹 · 组件夹具</h1>
+    <p style="color: var(--text-dim); margin-top: 8px; font-size: 14px;">每个组件的规范样品。实现以 <code>app/globals.css</code> 语义类 + <code>components/ui.tsx</code> 为准，本页用于校准视觉预期。动效合约「生长与断裂」见 DESIGN.md §6。</p>
+  </header>
+
+  <section>
+    <div class="spec-label">色彩 —— 瓷白三段 + 松烟墨 + 朱砂/靛青/石绿/赭石</div>
+    <div class="row">
+      <div class="swatch"><div class="swatch-box" style="background: var(--porcelain-0)"></div><div class="swatch-name">页面瓷白</div><div class="swatch-hex">#F5F5F2</div></div>
+      <div class="swatch"><div class="swatch-box" style="background: var(--porcelain-1)"></div><div class="swatch-name">浮层</div><div class="swatch-hex">#EDEDE8</div></div>
+      <div class="swatch"><div class="swatch-box" style="background: var(--porcelain-2)"></div><div class="swatch-name">卡片</div><div class="swatch-hex">#FCFCFA</div></div>
+      <div class="swatch"><div class="swatch-box" style="background: var(--ink-900)"></div><div class="swatch-name">松烟墨·主文本</div><div class="swatch-hex">#14161A</div></div>
+      <div class="swatch"><div class="swatch-box" style="background: var(--cinnabar)"></div><div class="swatch-name">朱砂·唯一强调</div><div class="swatch-hex">#D6382B</div></div>
+      <div class="swatch"><div class="swatch-box" style="background: var(--indigo)"></div><div class="swatch-name">靛青·交互</div><div class="swatch-hex">#1E4D7B</div></div>
+      <div class="swatch"><div class="swatch-box" style="background: var(--mineral)"></div><div class="swatch-name">石绿·成功</div><div class="swatch-hex">#2C7A58</div></div>
+      <div class="swatch"><div class="swatch-box" style="background: var(--ochre)"></div><div class="swatch-name">赭石·提醒</div><div class="swatch-hex">#A2701F</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="spec-label">字体 —— 标题/引文用衬线（Noto Serif SC），正文黑体，时间戳等宽</div>
+    <div class="glass-card">
+      <div class="serif" style="font-size: 26px; font-weight: 600;">记忆不是数据库，是一棵被锯开断面的树</div>
+      <p style="font-size: 14px; color: var(--text-dim); margin-top: 12px;">正文用思源黑体。次级文本用 --text-dim，弱化信息用 --text-weak。标题禁用渐变裁剪——实色墨 + 朱砂下划线。</p>
+      <p style="font-family: var(--font-mono); font-size: 12px; color: var(--text-weak); margin-top: 12px;">2026-09-01 21:30 · 等宽只给时间戳与计数</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="spec-label">按钮 —— 主墨黑（hover 转朱砂）/ 次幽灵 / 危险朱砂；overshoot 上浮</div>
+    <div class="row">
+      <button class="btn-lumen">主要操作</button>
+      <button class="btn-ghost">次要操作</button>
+      <button class="btn-danger">危险操作</button>
+      <button class="btn-lumen" disabled style="opacity: 0.42; box-shadow: none;">禁用</button>
+    </div>
+  </section>
+
+  <section>
+    <div class="spec-label">输入框 —— 瓷白底 + 聚焦墨黑描边 + 3px 柔光环</div>
+    <input class="input-glow" placeholder="低语……">
+  </section>
+
+  <section>
+    <div class="spec-label">标签 Chips —— 圆角 999，四色 alpha 底，文字一律中文</div>
+    <div class="row">
+      <span class="chip chip-cinnabar">心愿</span>
+      <span class="chip chip-cinnabar">脆弱</span>
+      <span class="chip chip-mineral">已入库</span>
+      <span class="chip chip-ochre">待办</span>
+      <span class="chip chip-indigo">进行中</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="spec-label">时刻卡 —— 朱砂左缘 + 极淡洇染呼吸（--phase 3~8s 伪随机）；hover 左缘印线向下盖章生长</div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">
+      <div class="firefly-seed">
+        <div class="seed-quote">"今天看到晚霞的时候，突然很想她。"</div>
+        <div class="seed-narrative">暮色里最软的一刻，他把一整天的喧嚣折成了一句话，递给远方的她。</div>
+        <div class="seed-meta"><span class="chip chip-cinnabar">爱</span><span>对她 · 2026-08-30</span></div>
+      </div>
+      <div class="firefly-seed">
+        <div class="seed-quote">"我好像一直在等一个不需要证明自己的地方。"</div>
+        <div class="seed-narrative">深夜里说出的愿望，轻得像叹息，却重得像他这些年的全部奔波。</div>
+        <div class="seed-meta"><span class="chip chip-cinnabar">心愿</span><span>对自己 · 2026-08-28</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="spec-label">年轮核（今天页核心）—— SVG 同心环 pathLength 0→1 自生长，环数 = 记忆年数，每第 7 环加粗（标记年）</div>
+    <div class="row">
+      <div class="ring-core">
+        <svg viewBox="0 0 148 148">
+          <circle cx="74" cy="74" r="26"></circle>
+          <circle cx="74" cy="74" r="34"></circle>
+          <circle cx="74" cy="74" r="42" class="is-marker"></circle>
+          <circle cx="74" cy="74" r="50"></circle>
+          <circle cx="74" cy="74" r="58"></circle>
+          <circle cx="74" cy="74" r="66" class="is-marker"></circle>
+        </svg>
+        <span class="core-count">25</span>
+      </div>
+      <div>
+        <div class="serif" style="font-size: 16px;">段记忆，正被温柔保存</div>
+        <p style="font-size: 13px; color: var(--text-weak); margin-top: 6px;">计数用等宽数字，逐位 spring 弹入（动力排版）。</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="spec-label">倒计时环（提醒 tab）—— 赭石弧线，余量越少色越强调</div>
+    <div class="row">
+      <div class="countdown-ring">
+        <svg width="64" height="64"><circle cx="32" cy="32" r="28" stroke="var(--edge)"></circle><circle cx="32" cy="32" r="28" stroke="var(--ochre)" stroke-dasharray="176" stroke-dashoffset="52"></circle></svg>
+      </div>
+      <div>
+        <div style="font-size: 14px; font-weight: 500;">给妈妈回电话</div>
+        <div style="font-family: var(--font-mono); font-size: 12px; color: var(--ochre); margin-top: 4px;">还剩 2 小时</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="spec-label">空状态与加载 —— 一圈未长成的年轮 + 宋体低语；光点呼吸，不用转圈</div>
+    <div class="row" style="align-items: stretch;">
+      <div class="glass-card" style="flex: 1; min-width: 260px;">
+        <div class="empty-seed">
+          <div class="empty-seed-dot"></div>
+          <div class="empty-seed-text">沉睡的种子等待第一次低语</div>
+        </div>
+      </div>
+      <div class="glass-card" style="flex: 1; min-width: 260px; display: flex; align-items: center; justify-content: center; gap: 12px;">
+        <div class="loading-dot"></div>
+        <span style="font-size: 13px; color: var(--text-weak);">正在召回记忆……</span>
+      </div>
+    </div>
+  </section>
+
+  <footer style="text-align: center; padding-top: 24px; border-top: 1px solid var(--edge);">
+    <p style="font-family: var(--font-serif); font-size: 13px; color: var(--text-weak);">动效合约「生长与断裂」——墨线自生长、spring 过冲、scroll-driven；同屏高频闪烁 ≤1 处；prefers-reduced-motion 三层降级不可破。</p>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -62,7 +62,6 @@ def test_preview_templates_change_with_unsaved_personality(monkeypatch, tmp_path
 
     monkeypatch.setattr(api.storage.config, "sqlite_path", lambda: tmp_path / "preview.db")
     monkeypatch.setattr(api.config, "api_token", lambda: "omni-test-token")
-    monkeypatch.setattr(api.xiaozhi_server, "warmup_asr", lambda: None)
     gentle = assistant_personality.from_preset("gentle")
     lively = assistant_personality.from_preset("lively")
     headers = {"Authorization": "Bearer omni-test-token"}

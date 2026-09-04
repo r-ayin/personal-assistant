@@ -18,9 +18,9 @@ class _FakeSearcher:
 
 
 def _mk_assistant(monkeypatch, results=None):
-    monkeypatch.setattr(chat.distill, "current_profile", lambda: {"preferences": ["安静"]})
+    monkeypatch.setattr(chat.memory_bridge, "current_profile", lambda: {"preferences": ["安静"]})
     monkeypatch.setattr(chat.storage, "latest_narrative", lambda: "")
-    monkeypatch.setattr(chat.scenes, "navigation", lambda: "")
+    monkeypatch.setattr(chat.memory_bridge, "navigation", lambda: "")
     if results is not None:
         monkeypatch.setattr(web, "get_searcher", lambda: _FakeSearcher(results))
     return chat.Assistant(llm=object(), embedder=object(), history=chat.ConversationHistory())

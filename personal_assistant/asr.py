@@ -50,8 +50,12 @@ class StubTranscriber(Transcriber):
         lines: list[str]
         if p.suffix.lower() == ".txt" and p.exists():
             lines = [l.strip() for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
-        else:
+        elif config.get("asr.stub.allow_fake", False):
             lines = self.SAMPLE
+        else:
+            # 默认拒绝造假：stub 对真实音频返回空而不是写死的样例文本。
+            # 假转写一旦入库就成了"用户说过的话"，比缺数据危险得多。
+            return []
         segs = []
         t = 0.0
         for i, line in enumerate(lines):

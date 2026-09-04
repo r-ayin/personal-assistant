@@ -52,20 +52,6 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
         val = os.environ.get(env_key)
         if val and section in cfg:
             cfg[section]["backend"] = val
-    for env_key, path, cast in (
-        ("PA_LOCAL_MODEL_ROOT", "local_omni.model_root", str),
-        ("PA_NATIVE_WORKER_PATH", "local_omni.worker_path", str),
-        ("PA_NATIVE_PIPE_NAME", "local_omni.pipe_name", str),
-        ("PA_LOCAL_MODEL_VERIFY_HASHES", "local_omni.verify_hashes",
-         lambda value: value.casefold() in {"1", "true", "yes", "on"}),
-        ("PA_PERCEPTION_ENABLED", "local_omni.perception_enabled",
-         lambda value: value.casefold() in {"1", "true", "yes", "on"}),
-    ):
-        value = os.environ.get(env_key)
-        if value is None:
-            continue
-        section, field = path.split(".", 1)
-        cfg.setdefault(section, {})[field] = cast(value)
     # 环境覆盖 LLM 5 旋钮（注入当前激活后端，与 PA_LLM_BACKEND 同模式）
     backend = cfg.get("llm", {}).get("backend")
     if backend and isinstance(cfg.get("llm", {}).get(backend), dict):
