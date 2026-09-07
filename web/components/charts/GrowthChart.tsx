@@ -74,18 +74,20 @@ export function AffectBars({ a }: { a: {
   ];
   const data = rows.map(([k, v]) => ({ k, v: v ?? 0 }));
   return (
-    <div className="mt-2" style={{ height: 150 }}>
-      <ResponsiveContainer width="100%" height="100%" debounce={80}>
-        <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -22 }}>
-          <XAxis dataKey="k" {...axisProps(t)} />
-          <YAxis {...axisProps(t)} />
-          <Bar dataKey="v" isAnimationActive={anim} animationDuration={dur} radius={[2, 2, 0, 0]}>
-            {data.map((_, i) => (
-              <Cell key={i} fill={i === 0 ? t.positive : i === 1 ? t.accent : t.interactive} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+    <div className="mt-2">
+      <div style={{ height: 150 }} className="w-full">
+        <ResponsiveContainer width="100%" height="100%" debounce={80}>
+          <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -22 }}>
+            <XAxis dataKey="k" {...axisProps(t)} />
+            <YAxis {...axisProps(t)} />
+            <Bar dataKey="v" isAnimationActive={anim} animationDuration={dur} radius={[2, 2, 0, 0]}>
+              {data.map((_, i) => (
+                <Cell key={i} fill={i === 0 ? t.positive : i === 1 ? t.accent : t.interactive} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
       <ul className="mt-1 space-y-0.5 text-[10.5px] leading-relaxed text-[var(--text-weak)]">
         {rows.map(([k, , d]) => <li key={k}>{k}：{d}</li>)}
       </ul>
