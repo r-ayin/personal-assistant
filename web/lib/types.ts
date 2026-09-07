@@ -406,6 +406,8 @@ export interface PersonMetric {
   ci_low: number | null;
   ci_high: number | null;
   n: number | null;
+  null_baseline?: string; // JSON 字符串
+  params?: string; // JSON 字符串
   eligible: number;
   ineligible_reason: string;
 }

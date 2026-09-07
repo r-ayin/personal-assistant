@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { DIM_EXPLAIN, METRIC_SUBS, METRIC_ZH, PERSON_KIND_ZH } from "@/lib/labels-zh";
+import { interpretMetric, interpretTrait } from "@/lib/metrics-read";
+import { MetricDetailChart, NullBandChart } from "@/components/charts";
 import type { PortraitMetricRow, PortraitTrait, TraitDist } from "@/lib/types";
 
 /** JSON 列解析：失败回退 null，绝不编造数值 */
@@ -70,6 +72,15 @@ export function TraitBar({ t }: { t: PortraitTrait }) {
           ? t.is_proxy === 1 ? "· 代理推断，非量表实测" : ""
           : `· 独立会话 ${t.n_independent_conv}/3，未升格为稳定特质`}
       </p>
+      {(() => {
+        const rd = interpretTrait(mean ?? null, sd ?? null, d?.n_observations ?? 0, promoted);
+        if (!rd) return null;
+        return (
+          <p className="mt-1 rounded-md bg-[var(--ind-06)] px-2.5 py-1.5 text-[11.5px] leading-relaxed text-[var(--ink-700)]">
+            <span className="font-medium text-[var(--indigo-deep)]">你的数怎么读：</span>{rd}
+          </p>
+        );
+      })()}
     </div>
   );
 }
@@ -120,6 +131,22 @@ export function MetricRow({ m }: { m: PortraitMetricRow }) {
           p={Number(p).toFixed(3)} → {above ? "高于随机，结构真实存在" : "与随机无异，别当结论"}
         </p>
       )}
+      {ok && (
+        <NullBandChart
+          observed={m.value} ciLow={m.ci_low} ciHigh={m.ci_high}
+          nullMean={nullMean} q025={nb?.null_q025} q975={nb?.null_q975}
+        />
+      )}
+      {ok && detail && <MetricDetailChart name={m.name} detail={detail} />}
+      {ok && (() => {
+        const rd = interpretMetric(m.name, m.value, nb, detail ?? null);
+        if (!rd) return null;
+        return (
+          <p className="mt-1.5 rounded-md bg-[var(--ind-06)] px-2.5 py-1.5 text-[12px] leading-relaxed text-[var(--ink-700)]">
+            <span className="font-medium text-[var(--indigo-deep)]">你的数怎么读：</span>{rd}
+          </p>
+        );
+      })()}
       {zh && ok && (
         <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-weak)]">
           高={zh.high}　低={zh.low}

@@ -1,5 +1,5 @@
 import {
-  CalendarDays, Compass, Gauge, Inbox, Layers, LineChart,
+  CalendarDays, Compass, FlaskConical, Gauge, Inbox, Layers, LineChart,
   BookOpen, MessageCircle, ScrollText, Search, Settings,
   ShieldCheck, Sparkles, Sunrise, UserRoundCog, Users,
 } from "lucide-react";
@@ -58,6 +58,7 @@ export const NAV: NavDef[] = [
       { id: "circles", label: "关系圈", icon: Layers },
       { id: "person", label: "单人档案", icon: Compass },
       { id: "metrics", label: "复杂度指标", icon: LineChart },
+      { id: "science", label: "指标科普", icon: FlaskConical },
     ],
     legacy: [],
   },

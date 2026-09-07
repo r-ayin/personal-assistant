@@ -583,8 +583,8 @@ def portrait_person(id: str):
             "moments": _rows(c, "SELECT id,verbatim_quote,narrative,tags,ts,recalled "
                                 "FROM moment WHERE counterpart_person_id=? "
                                 "ORDER BY ts DESC LIMIT 30", (id,)),
-            "metrics": _rows(c, "SELECT name,value,ci_low,ci_high,n,eligible,"
-                                "ineligible_reason FROM metric WHERE subject_id=?", (id,)),
+            "metrics": _rows(c, "SELECT name,value,ci_low,ci_high,n,null_baseline,params,"
+                                "eligible,ineligible_reason FROM metric WHERE subject_id=?", (id,)),
         }
 
 

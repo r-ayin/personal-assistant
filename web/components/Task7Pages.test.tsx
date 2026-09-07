@@ -11,6 +11,9 @@ import MemoryPage from "@/app/memory/page";
 import PortraitPage from "@/app/portrait/page";
 import SystemPage from "@/app/system/page";
 import { LEGACY_REDIRECTS, isActive, legacyTarget, navForPath } from "@/lib/nav";
+import { METRIC_ZH } from "@/lib/labels-zh";
+import { METRICS_SCIENCE } from "@/lib/metrics-science";
+import { interpretMetric } from "@/lib/metrics-read";
 import { api, clearApiToken, getApiToken, setApiToken } from "@/lib/api";
 
 vi.mock("next/navigation", () => ({ usePathname: vi.fn() }));
@@ -176,11 +179,11 @@ describe("Destinations render", () => {
     expect(screen.getByText(/输入关键词|检索中|连不上后端|没有命中/)).toBeInTheDocument();
   });
 
-  it("/portrait/ 4 个 tab 接真实端点，空/错时诚实降级不编造", async () => {
+  it("/portrait/ 5 个 tab 接真实端点，空/错时诚实降级不编造", async () => {
     vi.mocked(usePathname).mockReturnValue("/portrait/");
     render(<PortraitPage />);
     expect(screen.getByRole("heading", { level: 1, name: "我" })).toBeInTheDocument();
-    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(screen.getAllByRole("tab")).toHaveLength(5);
     await waitFor(() => {
       expect(screen.getByText(/正在从消息里读取|连不上后端|画像库尚未建立|画像正在从你的消息里长出来/))
         .toBeInTheDocument();
@@ -192,6 +195,45 @@ describe("Destinations render", () => {
     });
     expect(screen.getByRole("heading", { level: 1, name: "复杂度指标" })).toBeInTheDocument();
     expect(screen.getByText(/正在读取指标|连不上后端|指标库尚未建立|还没有任何指标/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: /指标科普/ }));
+    await waitFor(() => {
+      expect(document.getElementById("panel-science")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("heading", { level: 1, name: "指标科普" })).toBeInTheDocument();
+    // 科普面板是异步 chunk，等内容落地再断言
+    await waitFor(() => {
+      expect(screen.getByText("代理，不是量表")).toBeInTheDocument();
+    }, { timeout: 5000 });
+    // 四条诚实规则卡
+    for (const t of ["参照系是你自己的随机版本", "样本不足就灰显", "过时与升格两道门"]) {
+      expect(screen.getByText(t)).toBeInTheDocument();
+    }
+    // 19 项指标 + 画像三层都有锚点卡
+    for (const name of Object.keys(METRIC_ZH)) {
+      expect(document.getElementById(`sci-${name}`)).not.toBeNull();
+    }
+    for (const k of ["traits", "affect", "growth"]) {
+      expect(document.getElementById(`sci-${k}`)).not.toBeNull();
+    }
+  });
+
+  it("指标科普覆盖全部有中文标签的指标，且每张卡五件齐全", () => {
+    for (const name of Object.keys(METRIC_ZH)) {
+      const s = METRICS_SCIENCE[name];
+      expect(s, `科普缺 ${name}`).toBeDefined();
+      expect(s.origin.length).toBeGreaterThan(0);
+      expect(s.intuition.length).toBeGreaterThan(0);
+      expect(s.read.length).toBeGreaterThan(0);
+      expect(s.validity.null_kind.length).toBeGreaterThan(0);
+      expect(s.validity.ci_method.length).toBeGreaterThan(0);
+      expect(s.validity.gate.length).toBeGreaterThan(0);
+      expect(s.validity.limits.length).toBeGreaterThan(0);
+      // 当前解读层：每个指标都要能给出"你的数怎么读"
+      const rd = interpretMetric(name, 0.5, { p_value: 0.01, null_q025: 0.1, null_q975: 0.3 }, null);
+      expect(rd, `当前解读缺 ${name}`).toBeTruthy();
+      expect((rd ?? "").length).toBeGreaterThan(10);
+    }
   });
 
   it("/system/ 带 4 个 tab，默认停在摄入", () => {

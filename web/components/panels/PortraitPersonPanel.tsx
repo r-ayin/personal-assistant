@@ -2,9 +2,10 @@
 
 import { api } from "@/lib/api";
 import { HonestEmpty, MetricRow, TraitBar, parseJson, useAsync } from "@/components/portrait-bits";
+import { TraitDensityChart } from "@/components/charts";
 import { SectionHeader, Tag } from "@/components/ui";
 import { ALIAS_SPACE_ZH, SCHWARTZ_ZH } from "@/lib/labels-zh";
-import type { PersonMoment } from "@/lib/types";
+import type { PersonMoment, PortraitTrait, TraitDist } from "@/lib/types";
 
 function MomentCard({ m }: { m: PersonMoment }) {
   const tags = parseJson<string[]>(m.tags, []);
@@ -77,7 +78,17 @@ export default function PortraitPersonPanel({ personId }: { personId: string | n
         <section>
           <SectionHeader title="特质（密度分布）" subtitle="代理推断；未升格的弱化展示" />
           <div className="glass-card p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            {traits.map((t) => <TraitBar key={t.dimension} t={t} />)}
+            {traits.map((t: PortraitTrait) => (
+              <div key={t.dimension}>
+                <TraitBar t={t} />
+                <TraitDensityChart
+                  dist={parseJson<TraitDist | null>(t.dist, null)}
+                  promoted={t.promoted === 1}
+                  isProxy={t.is_proxy === 1}
+                  nConv={t.n_independent_conv}
+                />
+              </div>
+            ))}
           </div>
         </section>
       )}

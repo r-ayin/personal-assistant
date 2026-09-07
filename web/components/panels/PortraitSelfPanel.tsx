@@ -2,11 +2,29 @@
 
 import { api } from "@/lib/api";
 import { HonestEmpty, TraitBar, parseJson, useAsync } from "@/components/portrait-bits";
+import { AffectBars, GrowthChart, TraitDensityChart } from "@/components/charts";
+import type { GrowthPoint } from "@/components/charts/GrowthChart";
+import { interpretAffect, interpretGrowth } from "@/lib/metrics-read";
 import { SectionHeader } from "@/components/ui";
 import {
   GROWTH_ZH, LEVEL_ZH, SCHWARTZ_ZH, STALE_GOAL_DAYS, STALE_TASK_DAYS, TASK_TYPE_ZH,
 } from "@/lib/labels-zh";
-import type { PortraitGrowth } from "@/lib/types";
+import type { PortraitGrowth, PortraitTrait, TraitDist } from "@/lib/types";
+
+/** 特质格：文字条 + 真实密度曲线（n=0 时曲线组件自己画"纯先验"诚实态） */
+function TraitCell({ t }: { t: PortraitTrait }) {
+  return (
+    <div>
+      <TraitBar t={t} />
+      <TraitDensityChart
+        dist={parseJson<TraitDist | null>(t.dist, null)}
+        promoted={t.promoted === 1}
+        isProxy={t.is_proxy === 1}
+        nConv={t.n_independent_conv}
+      />
+    </div>
+  );
+}
 
 /** 「我」tab：七维自我画像。全部来自 /portrait/self，空则诚实空态。 */
 export default function PortraitSelfPanel() {
@@ -47,20 +65,18 @@ export default function PortraitSelfPanel() {
         <section>
           <SectionHeader title="特质（密度分布）" subtitle="mean±sd，非标签；代理推断，非量表实测" />
           <div className="glass-card p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            {traits.map((t) => <TraitBar key={t.dimension} t={t} />)}
+            {traits.map((t) => <TraitCell key={t.dimension} t={t} />)}
           </div>
-          {!!unpromoted.length && (
-            <p className="mt-2 text-[12px] text-[var(--text-weak)]">
-              另有 {unpromoted.length} 个维度独立会话不足 3，未升格，下面弱化展示。
-            </p>
-          )}
         </section>
       )}
-      {!traits.length && !!unpromoted.length && (
-        <section>
-          <SectionHeader title="特质（未升格）" subtitle="独立会话 <3，暂不作为稳定特质" />
+      {!!unpromoted.length && (
+        <section className="opacity-70">
+          <SectionHeader
+            title={`未升格特质（${unpromoted.length}）`}
+            subtitle="独立会话 <3，暂不作为稳定特质；弱化展示，只当线索"
+          />
           <div className="glass-card p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            {unpromoted.map((t) => <TraitBar key={t.dimension} t={t} />)}
+            {unpromoted.map((t) => <TraitCell key={t.dimension} t={t} />)}
           </div>
         </section>
       )}
@@ -186,6 +202,11 @@ export default function PortraitSelfPanel() {
                 </span>
               </div>
             ))}
+            <AffectBars a={affect} />
+            <p className="mt-2 rounded-md bg-[var(--ind-06)] px-2.5 py-1.5 text-[12px] leading-relaxed text-[var(--ink-700)]">
+              <span className="font-medium text-[var(--indigo-deep)]">你的数怎么读：</span>
+              {interpretAffect(affect)}
+            </p>
           </div>
         </section>
       )}
@@ -196,18 +217,21 @@ export default function PortraitSelfPanel() {
       {!!growth.length && (
         <section>
           <SectionHeader title="成长（Ryff 六维代理）" subtitle="行为代理推断，非量表实测" />
-          <div className="glass-card p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="glass-card p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
             {growth.map((g: PortraitGrowth) => {
-              const hist = parseJson<{ proxy_score?: number }[]>(g.score_history, []);
-              const score = hist[0]?.proxy_score;
+              const hist = parseJson<GrowthPoint[]>(g.score_history, []);
+              const label = GROWTH_ZH[g.dimension] ?? g.dimension;
               return (
-                <div key={g.id} className="flex items-baseline justify-between gap-3">
-                  <span className="text-[13px] text-[var(--ink-700)]">
-                    {GROWTH_ZH[g.dimension] ?? g.dimension}
-                  </span>
-                  <span className="font-mono text-[12px] text-[var(--text-weak)]">
-                    {score == null ? "无数据" : `${score.toFixed(2)} · 行为代理`}
-                  </span>
+                <div key={g.id}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-[13px] text-[var(--ink-700)]">{label}</span>
+                    <span className="font-mono text-[11px] text-[var(--text-weak)]">行为代理</span>
+                  </div>
+                  <GrowthChart history={hist} label={label} />
+                  <p className="mt-1 rounded-md bg-[var(--ind-06)] px-2.5 py-1.5 text-[11.5px] leading-relaxed text-[var(--ink-700)]">
+                    <span className="font-medium text-[var(--indigo-deep)]">你的数怎么读：</span>
+                    {interpretGrowth(g.dimension, hist[0]?.proxy_score ?? null)}
+                  </p>
                 </div>
               );
             })}
