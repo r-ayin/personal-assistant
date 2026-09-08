@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { api } from "@/lib/api";
 import { HonestEmpty, MetricRow, useAsync } from "@/components/portrait-bits";
-import { SectionHeader } from "@/components/ui";
+import { Rich, SectionHeader } from "@/components/ui";
 import { METRICS_INTRO } from "@/lib/labels-zh";
 import type { PortraitMetricRow } from "@/lib/types";
 
@@ -40,7 +40,7 @@ export default function PortraitMetricsPanel() {
   return (
     <div className="space-y-10">
       <p className="max-w-[70ch] text-[12.5px] leading-relaxed text-[var(--text-dim)]">
-        {METRICS_INTRO}
+        <Rich text={METRICS_INTRO} />
       </p>
       {groups.map(([kind, rows]) => (
         <section key={kind}>

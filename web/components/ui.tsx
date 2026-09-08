@@ -177,3 +177,21 @@ export function MonoCount({ value, size = 24, color = "var(--text-main)" }: { va
     </span>
   );
 }
+
+/**
+ * 行内 **强调** 的最小渲染器。
+ * 文案数据模块（labels-zh 的 METRICS_INTRO、metrics-science 的各字段）用 **x** 标重点；
+ * 直接当纯文本渲染会把星号裸奔到界面上。只认 **bold** 一种标记，其余原样输出。
+ */
+export function Rich({ text }: { text: string }) {
+  const parts = (text ?? "").split(/\*\*([^*]+)\*\*/g);
+  return (
+    <>
+      {parts.map((p, i) =>
+        i % 2 === 1
+          ? <strong key={i} className="font-semibold" style={{ color: "var(--ink-900)" }}>{p}</strong>
+          : <span key={i}>{p}</span>,
+      )}
+    </>
+  );
+}

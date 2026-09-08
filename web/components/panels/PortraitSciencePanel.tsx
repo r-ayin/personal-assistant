@@ -2,7 +2,7 @@
 
 import { useReducedMotion } from "framer-motion";
 import Reveal from "@/components/Reveal";
-import { SectionHeader } from "@/components/ui";
+import { Rich, SectionHeader } from "@/components/ui";
 import {
   HONESTY_RULES, LAYER_SCIENCE, METRICS_SCIENCE, SCIENCE_GROUPS,
 } from "@/lib/metrics-science";
@@ -21,9 +21,9 @@ function ScienceCard({ id, s, onGoMetrics }: {
         <h3 className="serif text-[17px] font-semibold text-[var(--ink-900)]">{s.zh}</h3>
         <span className="shrink-0 font-mono text-[10.5px] text-[var(--text-weak)]">{id.replace("sci-", "")}</span>
       </div>
-      <p className="mt-1 text-[11.5px] text-[var(--text-dim)]">出处：{s.origin}</p>
+      <p className="mt-1 text-[11.5px] text-[var(--text-dim)]">出处：<Rich text={s.origin} /></p>
 
-      <p className="mt-3 text-[13px] leading-relaxed text-[var(--ink-700)]">{s.intuition}</p>
+      <p className="mt-3 text-[13px] leading-relaxed text-[var(--ink-700)]"><Rich text={s.intuition} /></p>
       {s.formula && (
         <pre className="mt-2 overflow-x-auto rounded-md bg-[var(--ink-02)] px-3 py-2 font-mono text-[11.5px] leading-relaxed text-[var(--ink-700)]">
           {s.formula}
@@ -31,35 +31,35 @@ function ScienceCard({ id, s, onGoMetrics }: {
       )}
 
       <p className="mt-3 text-[12.5px] leading-relaxed text-[var(--text-dim)]">
-        <span className="font-medium text-[var(--ink-700)]">怎么读：</span>{s.read}
+        <span className="font-medium text-[var(--ink-700)]">怎么读：</span><Rich text={s.read} />
       </p>
       {METRIC_ZH[id.replace("sci-", "")] && (
         <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-weak)]">
-          高={METRIC_ZH[id.replace("sci-", "")].high}　低={METRIC_ZH[id.replace("sci-", "")].low}
+          高=<Rich text={METRIC_ZH[id.replace("sci-", "")].high} />　低=<Rich text={METRIC_ZH[id.replace("sci-", "")].low} />
         </p>
       )}
 
       <dl className="mt-3 space-y-1.5 border-t border-[var(--hairline)] pt-3 text-[11.5px] leading-relaxed">
         <div className="flex gap-2">
           <dt className="shrink-0 font-medium text-[var(--indigo)]">零假设基线</dt>
-          <dd className="text-[var(--text-dim)]">{s.validity.null_kind}</dd>
+          <dd className="text-[var(--text-dim)]"><Rich text={s.validity.null_kind} /></dd>
         </div>
         <div className="flex gap-2">
           <dt className="shrink-0 font-medium text-[var(--indigo)]">置信区间</dt>
-          <dd className="text-[var(--text-dim)]">{s.validity.ci_method}</dd>
+          <dd className="text-[var(--text-dim)]"><Rich text={s.validity.ci_method} /></dd>
         </div>
         <div className="flex gap-2">
           <dt className="shrink-0 font-medium text-[var(--indigo)]">出数门槛</dt>
-          <dd className="text-[var(--text-dim)]">{s.validity.gate}</dd>
+          <dd className="text-[var(--text-dim)]"><Rich text={s.validity.gate} /></dd>
         </div>
         <div className="flex gap-2">
           <dt className="shrink-0 font-medium text-[var(--ochre)]">已知局限</dt>
-          <dd className="text-[var(--text-dim)]">{s.validity.limits}</dd>
+          <dd className="text-[var(--text-dim)]"><Rich text={s.validity.limits} /></dd>
         </div>
       </dl>
       {s.caveats && (
         <p className="mt-2 rounded-md bg-[var(--cin-04)] px-3 py-2 text-[11.5px] leading-relaxed text-[var(--cinnabar-deep)]">
-          {s.caveats}
+          <Rich text={s.caveats} />
         </p>
       )}
       <button
@@ -101,7 +101,7 @@ export default function PortraitSciencePanel({ onGoMetrics }: { onGoMetrics: () 
           {HONESTY_RULES.map((r, i) => (
             <Reveal key={r.title} as="section" className="glass-card p-5" delay={i * 0.06}>
               <h3 className="serif text-[15px] font-semibold text-[var(--ink-900)]">{r.title}</h3>
-              <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--text-dim)]">{r.body}</p>
+              <p className="mt-2 text-[12.5px] leading-relaxed text-[var(--text-dim)]"><Rich text={r.body} /></p>
             </Reveal>
           ))}
         </div>
