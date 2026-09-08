@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import EmptyState from "@/components/EmptyState";
-import { LoadingDots, TypewriterText, WhisperLine } from "@/components/ui";
+import { LoadingDots, Prose, stripMarkdown, TypewriterText, WhisperLine } from "@/components/ui";
 import { EvidenceEmbers } from "@/components/chat-evidence";
 import { api } from "@/lib/api";
 import { EASE } from "@/lib/motion";
@@ -315,16 +315,28 @@ function AssistantBubble({ msg, typewrite }: { msg: Message; typewrite: boolean 
         opacity: msg.failed ? 0.75 : 1,
       }}
     >
-      <p
-        className="serif whitespace-pre-wrap"
-        style={{
-          fontSize: 15,
-          lineHeight: 2,
-          color: msg.failed ? "var(--text-weak)" : "var(--text-main)",
-        }}
-      >
-        {typewrite && !msg.failed ? <TypewriterText text={msg.content} speed={20} /> : msg.content}
-      </p>
+      {typewrite && !msg.failed ? (
+        <p
+          className="serif whitespace-pre-wrap"
+          style={{
+            fontSize: 15,
+            lineHeight: 2,
+            color: msg.failed ? "var(--text-weak)" : "var(--text-main)",
+          }}
+        >
+          <TypewriterText text={stripMarkdown(msg.content)} speed={20} />
+        </p>
+      ) : (
+        <Prose
+          text={msg.content}
+          className="serif"
+          style={{
+            fontSize: 15,
+            lineHeight: 2,
+            color: msg.failed ? "var(--text-weak)" : "var(--text-main)",
+          }}
+        />
+      )}
       {msg.evidence.length > 0 && <EvidenceEmbers evidence={msg.evidence} />}
       <div className="mt-2" style={TIME_STYLE}>
         {emberTime(msg.createdAt)}

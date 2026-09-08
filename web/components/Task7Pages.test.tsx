@@ -14,6 +14,7 @@ import { LEGACY_REDIRECTS, isActive, legacyTarget, navForPath } from "@/lib/nav"
 import { METRIC_ZH } from "@/lib/labels-zh";
 import { METRICS_SCIENCE } from "@/lib/metrics-science";
 import { interpretMetric } from "@/lib/metrics-read";
+import { Prose, Rich, stripMarkdown } from "@/components/ui";
 import { api, clearApiToken, getApiToken, setApiToken } from "@/lib/api";
 
 vi.mock("next/navigation", () => ({ usePathname: vi.fn() }));
@@ -216,6 +217,20 @@ describe("Destinations render", () => {
     for (const k of ["traits", "affect", "growth"]) {
       expect(document.getElementById(`sci-${k}`)).not.toBeNull();
     }
+  });
+
+  it("markdown 残留渲染器：Rich/Prose/stripMarkdown 不留裸标记", () => {
+    const { unmount } = render(<Rich text={"生活**模式**长什么样"} />);
+    expect(screen.getByText("模式")).toBeInTheDocument();
+    expect(screen.queryByText(/\*\*/)).not.toBeInTheDocument();
+    unmount();
+
+    const sample = "**国内要闻**\n- 甲条新闻\n- 乙条新闻\n\n## 小结\n今天偏忙。";
+    const { container } = render(<Prose text={sample} />);
+    expect(container.querySelectorAll("li")).toHaveLength(2);
+    expect(container.textContent).not.toMatch(/\*\*|^- |^## /m);
+    expect(screen.getByText("小结")).toBeInTheDocument();
+    expect(stripMarkdown(sample)).not.toMatch(/\*\*|#{1,6}\s|^- /m);
   });
 
   it("指标科普覆盖全部有中文标签的指标，且每张卡五件齐全", () => {

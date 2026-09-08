@@ -195,3 +195,72 @@ export function Rich({ text }: { text: string }) {
     </>
   );
 }
+
+/** 纯文本净化：给必须保持单段文本的场合（如逐字生长动画）去掉 markdown 标记 */
+export function stripMarkdown(s: string): string {
+  return (s ?? "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/^(\s*)#{1,6}\s+/gm, "$1")
+    .replace(/^(\s*)[-*]\s+/gm, "$1· ");
+}
+
+/**
+ * 极简 markdown 渲染：LLM 回复里的 **加粗** / "- " 列表 / "# " 小标题不再裸奔。
+ * 只认这三种块级形态 + Rich 的行内加粗；空行分段，段内单换行用 whitespace-pre-wrap 保留。
+ * 不是通用 markdown 解析器——代码块/表格/链接不处理（聊天回复里未出现过）。
+ */
+export function Prose({ text, className = "", style }: {
+  text: string;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const blocks = (text ?? "").split(/\n{2,}/);
+  return (
+    <div className={`space-y-2 ${className}`.trim()} style={style}>
+      {blocks.map((b, i) => <ProseBlock key={i} block={b} />)}
+    </div>
+  );
+}
+
+/** 单个空行分段内部：按行把散文 / "- " 列表 / "# " 标题各自聚成块（真实回复常混排） */
+function ProseBlock({ block }: { block: string }) {
+  const out: React.ReactNode[] = [];
+  let prose: string[] = [];
+  let bullets: string[] = [];
+  const flushProse = () => {
+    if (!prose.length) return;
+    out.push(<p key={`p${out.length}`} className="whitespace-pre-wrap"><Rich text={prose.join("\n")} /></p>);
+    prose = [];
+  };
+  const flushBullets = () => {
+    if (!bullets.length) return;
+    out.push(
+      <ul key={`u${out.length}`} className="list-disc space-y-1 pl-5">
+        {bullets.map((l, j) => <li key={j}><Rich text={l} /></li>)}
+      </ul>,
+    );
+    bullets = [];
+  };
+  for (const line of block.split("\n")) {
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+    const heading = line.match(/^#{1,6}\s+(.*)$/);
+    if (bullet) {
+      flushProse();
+      bullets.push(bullet[1]);
+    } else if (heading) {
+      flushProse();
+      flushBullets();
+      out.push(
+        <p key={`h${out.length}`} className="whitespace-pre-wrap font-semibold" style={{ color: "var(--ink-900)" }}>
+          <Rich text={heading[1]} />
+        </p>,
+      );
+    } else {
+      flushBullets();
+      prose.push(line);
+    }
+  }
+  flushProse();
+  flushBullets();
+  return <div className="space-y-2">{out}</div>;
+}

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import EmptyState from "@/components/EmptyState";
 import dynamic from "next/dynamic";
-import { LoadingDots, SectionHeader, Tag, WhisperLine } from "@/components/ui";
+import { LoadingDots, Prose, SectionHeader, stripMarkdown, Tag, WhisperLine } from "@/components/ui";
 
 // 菌丝 SVG 图较重且只在选中知识页后才需要 → 懒加载，/memory/ 首屏不为它付费
 const WikiMyceliumGraph = dynamic(() => import("@/components/wiki-mycelium-graph"), {
@@ -260,9 +260,15 @@ export default function KnowledgePanel() {
                   <h3 className="text-base font-semibold mb-3" style={{ fontFamily: "var(--font-serif)" }}>
                     {p.title}
                   </h3>
-                  <p className="text-sm leading-relaxed mb-4 line-clamp-4" style={{ color: "var(--text-dim)" }}>
-                    {p.body}
-                  </p>
+                  {isSelected ? (
+                    <div className="text-sm leading-relaxed mb-4" style={{ color: "var(--text-dim)" }}>
+                      <Prose text={p.body} />
+                    </div>
+                  ) : (
+                    <p className="text-sm leading-relaxed mb-4 line-clamp-4" style={{ color: "var(--text-dim)" }}>
+                      {stripMarkdown(p.body)}
+                    </p>
+                  )}
                   {tags.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-3">
                       {tags.map((t) => (
