@@ -1,7 +1,8 @@
 """web.py — 联网搜索（可插拔）。免 key 默认 Bing HTML；可切 ApiWebSearcher(Tavily/Generic 等用户自配搜索 API)。
 
-config web.backend: bing(默认) | baidu | api | stub
+config web.backend: bing(默认) | baidu | api | deepseek | stub
 config web.api: {format: tavily|generic, api_key, base_url, query_param, ...}
+deepseek 后端复用当前 LLM 上游凭据，走 Responses API 的托管 web_search 工具。
 """
 from __future__ import annotations
 import html as _html
@@ -9,6 +10,7 @@ import json
 import re
 import urllib.parse
 import urllib.request
+from datetime import datetime
 
 from . import config
 
@@ -155,6 +157,82 @@ class ApiWebSearcher(WebSearcher):
         return out
 
 
+def _norm_hit(raw) -> dict:
+    """把搜索后端返回的单条结果归一化成 {title,url,snippet}，容忍字段别名。"""
+    if isinstance(raw, dict):
+        return {"title": str(raw.get("title") or raw.get("name") or "")[:80],
+                "url": str(raw.get("url") or raw.get("link") or "")[:120],
+                "snippet": str(raw.get("snippet") or raw.get("content")
+                               or raw.get("summary") or "")[:200]}
+    return {"title": "", "url": "", "snippet": str(raw)[:200]}
+
+
+class DeepSeekWebSearcher(WebSearcher):
+    """DeepSeek Responses API 的托管 web_search 工具（服务端执行搜索）。
+
+    凭据复用当前激活的 LLM 上游（llm.<backend> 的 base_url/api_key/model）——
+    联网与对话同一个 key，不新增配置项。响应 output 里 web_search_call 项带
+    query/results/sources，取结构化结果；取不到时把 output_text 整体作为单条
+    snippet 兜底（它来自已联网的模型回答，仍是真实依据而非编造）。
+    服务端搜索耗时数秒，故类上带 timeout 属性供 chat 侧放宽（默认 3s 不够）。
+    """
+    timeout = 45.0
+
+    def _creds(self) -> tuple[str, str, str]:
+        backend = config.get("llm.backend", "openai_compat")
+        sec = config.get(f"llm.{backend}", {}) or {}
+        return (str(sec.get("base_url", "")).rstrip("/"),
+                str(sec.get("api_key", "")),
+                str(sec.get("model", "")))
+
+    def search(self, query: str, n: int = 10) -> list[dict]:
+        base, key, model = self._creds()
+        if not base or not key:
+            print("[web] deepseek backend 缺 base_url/api_key（沿用当前 LLM 上游配置）")
+            return []
+        # 实测不给日期时模型会多轮搜索反复确认「今天」，耗时翻倍；直接喂服务器日期。
+        now = datetime.now().astimezone()
+        prompt = (f"服务器当前日期：{now:%Y-%m-%d}（星期{'一二三四五六日'[now.weekday()]}）。\n"
+                  f"用户查询：{query}")
+        try:
+            data = _post_json(f"{base}/responses",
+                              {"model": model, "input": prompt,
+                               "tools": [{"type": "web_search"}]},
+                              headers={"Authorization": f"Bearer {key}"},
+                              timeout=int(self.timeout))
+        except Exception as e:
+            print(f"[web] deepseek responses fail: {e}")
+            return []
+        out = []
+        queries: list[str] = []
+        commentary: list[str] = []
+        final = ""
+        for item in data.get("output", []) or []:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "web_search_call":
+                action = item.get("action") or {}
+                queries.extend(q for q in (action.get("queries") or [])
+                               if isinstance(q, str) and not q.startswith("ws_call_id="))
+            elif item.get("type") == "message":
+                text = "\n".join(c.get("text", "") for c in (item.get("content") or [])
+                                 if isinstance(c, dict) and c.get("text"))
+                if not text:
+                    continue
+                if item.get("phase") == "final_answer":
+                    final = text
+                else:
+                    commentary.append(text)
+        # 实测：web_search_call 只回搜索词、不回结果文档；接地内容在 message 文本里，
+        # 且 DeepSeek 顶层不给 output_text（与 OpenAI Responses 不同）。
+        grounded = final or (commentary[-1] if commentary else "") or (data.get("output_text") or "")
+        grounded = grounded.strip()
+        if grounded:
+            title = ("联网搜索 " + " / ".join(queries[:2]))[:80] if queries else query[:80]
+            out.append({"title": title, "url": "", "snippet": grounded})
+        return out[:n]
+
+
 class StubWebSearcher(WebSearcher):
     def search(self, query: str, n: int = 10) -> list[dict]:
         return []
@@ -166,6 +244,8 @@ def get_searcher() -> WebSearcher:
         return BaiduWebSearcher()
     if backend == "api":
         return ApiWebSearcher()
+    if backend == "deepseek":
+        return DeepSeekWebSearcher()
     if backend == "stub":
         return StubWebSearcher()
     return BingWebSearcher()

@@ -79,10 +79,90 @@ def cmd_reminders(args):
 
 
 def cmd_speakers(args):
-    sps = storage.speakers_all()
-    print(f"{len(sps)} speakers:")
-    for s in sps:
-        print(f"  {s['name']}  label={s.get('label','')}  {s.get('note','')}")
+    action = getattr(args, "action", "list") or "list"
+    rest = list(getattr(args, "arg", None) or [])
+    if action == "list":
+        sps = storage.speakers_all()
+        print(f"{len(sps)} speakers:")
+        for s in sps:
+            row = storage.get_speaker(s["name"]) or {}
+            print(f"  {s['name']}  label={s.get('label','')}  声纹={'有' if row.get('embedding') else '无'}  {s.get('note','')}")
+        return
+    if action == "calibrate":
+        if not rest:
+            print("用法: speakers calibrate <音频文件>"); return
+        from .speaker import RemoteDiarizer, SpeakerRegistry
+        from . import voiceprint as vp
+        from collections import defaultdict
+        d = RemoteDiarizer()
+        path = rest[0]
+        fname = path.rsplit("/", 1)[-1]
+        data = d.diarize(path)
+        if not data:
+            print("diarize 失败：检查 speaker.backend=remote 与 PA_ASR_* 配置"); return
+        reg = SpeakerRegistry()
+        clusters = defaultdict(list)
+        for s in data.get("segments") or []:
+            clusters[s.get("speaker")].append((s.get("start", 0.0), s.get("end", 0.0), s.get("text", "")))
+        print(f"{fname}: {len(clusters)} 个簇（阈值 {reg.threshold}）")
+        for lab in sorted(clusters):
+            ranges = [(b, e) for b, e, _ in clusters[lab]]
+            vec = d._cluster_vec(path, ranges)
+            if vec is not None:
+                storage.upsert_cluster(fname, lab, vp.pack(vec), sum(e - b for b, e in ranges))
+            role, sim = reg.best_match(vec) if vec is not None else (None, -1.0)
+            matched = role if (vec is not None and sim >= reg.threshold) else None
+            sample = clusters[lab][0][2][:40]
+            print(f"  {lab}  {sum(e - b for b, e in ranges):5.1f}s  {len(clusters[lab])} 段  "
+                  f"匹配={matched or ('未匹配 sim=%.2f' % sim)}  样例: {sample}")
+        print("标定: speakers assign <音频文件> <簇> <角色名>")
+        return
+    if action == "assign":
+        if len(rest) < 3:
+            print("用法: speakers assign <音频文件> <簇> <角色名>"); return
+        path, cluster, role = rest[0], rest[1], rest[2]
+        fname = path.rsplit("/", 1)[-1]
+        row = next((r for r in storage.clusters_for_file(fname) if r["cluster"] == cluster), None)
+        if not row or not row["embedding"]:
+            print(f"找不到 {fname} 的簇 {cluster}，先跑 speakers calibrate"); return
+        from .speaker import SpeakerRegistry
+        from . import voiceprint as vp
+        SpeakerRegistry().enroll(role, vp.unpack(row["embedding"]), row.get("seconds") or 0.0)
+        storage.assign_cluster_role(fname, cluster, role)
+        with storage.connect() as c:
+            c.execute("UPDATE segments SET speaker=? WHERE source_file=? AND speaker=?", (role, fname, cluster))
+            c.commit()
+        print(f"已把 {fname}/{cluster} 标定为角色 {role}，声纹入库并回写 segments")
+        return
+    if action == "backfill":
+        from types import SimpleNamespace as NS
+        from .speaker import RemoteDiarizer
+        d = RemoteDiarizer()
+        if not d.available():
+            print("speaker.backend 不是 remote 或 PA_ASR_* 未配置"); return
+        with storage.connect() as c:
+            files = [r["source_file"] for r in c.execute(
+                "SELECT DISTINCT source_file FROM segments "
+                "WHERE speaker='user' OR speaker LIKE 'S%'")]
+        n = 0
+        for fname in files:
+            path = config.inbox_dir() / fname
+            if not path.exists():
+                print(f"  跳过 {fname}（inbox 已无原音频）"); continue
+            with storage.connect() as c:
+                rows = [dict(r) for r in c.execute(
+                    "SELECT id,start_sec,end_sec,speaker FROM segments WHERE source_file=?", (fname,))]
+            objs = [NS(id=r["id"], start_sec=r["start_sec"], end_sec=r["end_sec"], speaker=r["speaker"]) for r in rows]
+            info = d.label_segments(objs, str(path))
+            with storage.connect() as c:
+                for o in objs:
+                    c.execute("UPDATE segments SET speaker=? WHERE id=?", (o.speaker, o.id))
+                c.commit()
+            n += 1
+            print(f"  {fname}: {info}")
+        print(f"回填完成: {n} 个文件")
+        return
+    print("未知 action")
 
 
 def cmd_recommend(args):
@@ -278,7 +358,8 @@ def main(argv=None):
     sub.add_parser("verify").set_defaults(func=cmd_verify)
     c = sub.add_parser("calendar"); c.add_argument("query", nargs="?"); c.add_argument("--list", action="store_true"); c.set_defaults(func=cmd_calendar)
     r = sub.add_parser("reminders"); r.add_argument("--check", action="store_true"); r.set_defaults(func=cmd_reminders)
-    sub.add_parser("speakers").set_defaults(func=cmd_speakers)
+    spk = sub.add_parser("speakers"); spk.add_argument("action", nargs="?", default="list",
+        choices=["list", "calibrate", "assign", "backfill"]); spk.add_argument("arg", nargs="*"); spk.set_defaults(func=cmd_speakers)
     rc = sub.add_parser("recommend"); rc.add_argument("kind", nargs="?", default="book", choices=["book","movie","action"]); rc.add_argument("query", nargs="?"); rc.set_defaults(func=cmd_recommend)
     w = sub.add_parser("wiki"); w.add_argument("action", choices=["build","list","search"]); w.add_argument("q", nargs="?"); w.set_defaults(func=cmd_wiki)
     sub.add_parser("status").set_defaults(func=cmd_status)

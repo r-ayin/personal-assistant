@@ -267,15 +267,14 @@ h1, h2, h3, .serif { font-family: var(--font-serif); }
 
 .nav-item {
   position: relative; margin: 0 12px; display: flex; align-items: center;
-  justify-content: center; gap: 14px;
-  padding: 11px 0; border-radius: var(--r-md); cursor: pointer;
+  /* 收起态必须左对齐：隐藏的 label 仍占布局宽度，居中会把图标推出左边界被裁切；
+     14px 内边距使 24px 图标恰好在 76px 导轨居中 */
+  justify-content: flex-start; gap: 14px;
+  padding: 11px 14px; border-radius: var(--r-md); cursor: pointer;
   color: var(--text-dim);
   transition: color 0.24s var(--ease-out), background 0.24s var(--ease-out),
               transform 0.34s var(--ease-overshoot);
   white-space: nowrap; overflow: hidden;
-}
-.pa-sidebar:hover .nav-item, .pa-sidebar.is-expanded .nav-item {
-  justify-content: flex-start; padding: 11px 14px;
 }
 .nav-item:hover { color: var(--ink-900); background: var(--ink-04); transform: translateX(2px); }
 .nav-item:active { transform: scale(0.97); }

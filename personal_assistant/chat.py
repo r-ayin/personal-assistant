@@ -194,6 +194,23 @@ def assistant_for(conversation_id: str, **kwargs) -> "Assistant":
     return Assistant(history=CONVERSATIONS.get(conversation_id), **kwargs)
 
 
+def _memcore_hits(query: str, k: int = 5) -> list[dict]:
+    """融合系统真混合检索（FTS5 bigram + 向量 + RRF），与 /memory/search 端点同源。
+
+    返回 chat 现有 hits 结构 [{"memory": {...}, "score"}]。memcore 不可导入、
+    索引缺失或检索抛错时返回 []，调用方自行降级——联网/对话绝不被检索拖死。
+    """
+    import sys
+    from pathlib import Path
+    root = str(Path(config.ROOT).parent)
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from memcore import retrieve
+    rows = retrieve.search(retrieve.connect(), query, k=k)
+    return [{"memory": {"id": r["id"], "kind": "fused", "content": r["text"]},
+             "score": r["score"]} for r in rows]
+
+
 class Assistant:
     def __init__(self, llm=None, embedder=None, history=None):
         self.llm = llm or get_llm()
@@ -209,15 +226,20 @@ class Assistant:
         mode = str(config.get("chat.web_search", "auto")).strip().lower()
         if mode == "off" or not query or not _WEB_SEARCH_RE.search(query):
             return []
+        try:
+            from . import web as web_mod
+            searcher = web_mod.get_searcher()
+        except Exception:
+            return []
         if timeout is None:
-            timeout = _WEB_SEARCH_TIMEOUT
+            # 服务端联网搜索（如 deepseek Responses）要数秒，3s 默认必超时；
+            # 后端可自带 timeout 属性放宽，抓取类后端仍走 3s 快失败。
+            timeout = float(getattr(searcher, "timeout", _WEB_SEARCH_TIMEOUT))
         now = time.monotonic()
         cached = _WEB_CACHE.get(query)
         if cached and now - cached[0] < _WEB_CACHE_TTL:
             return cached[1]
         try:
-            from . import web as web_mod
-            searcher = web_mod.get_searcher()
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
                 fut = ex.submit(searcher.search, query, 5)
                 results = fut.result(timeout=timeout)
@@ -300,7 +322,7 @@ class Assistant:
                          + json.dumps(
                              [{"title": (r.get("title") or "")[:80],
                                "url": (r.get("url") or "")[:120],
-                               "snippet": (r.get("snippet") or "")[:200]}
+                               "snippet": (r.get("snippet") or "")[:600]}
                               for r in web_results],
                              ensure_ascii=False)
                          + "\n</web-search-results>")
@@ -314,11 +336,18 @@ class Assistant:
     def _recall_context(self, cleaned: str) -> tuple[list[dict], list[dict], list[str], list[dict]]:
         hits = None
         try:
-            rr = memory_bridge.hybrid_recall(cleaned, embedder=self.embedder)
-            if rr.items:
-                hits = [{"memory": it["memory"], "score": it["score"]} for it in rr.items]
+            fused = _memcore_hits(cleaned, k=5)
+            if fused:
+                hits = fused
         except Exception:
             hits = None
+        if hits is None:
+            try:
+                rr = memory_bridge.hybrid_recall(cleaned, embedder=self.embedder)
+                if rr.items:
+                    hits = [{"memory": it["memory"], "score": it["score"]} for it in rr.items]
+            except Exception:
+                hits = None
         if hits is None:
             hits = memory_bridge.search(cleaned, k=5, embedder=self.embedder)
         perception = recent_perception_segments(limit=3, minutes_back=5)

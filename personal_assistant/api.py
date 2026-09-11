@@ -656,22 +656,81 @@ def llm_settings_update(body: LLMSettingsIn):
     return {"backend": backend, "applied": applied, "effective": eff}
 
 
+class LLMUpstreamIn(BaseModel):
+    protocol: str | None = None    # openai | anthropic；留空按 endpoint 形态推断
+    endpoint: str                  # 完整调用地址，如 https://api.x.com/v1/chat/completions
+    api_key: str | None = None     # 留空 = 沿用两侧 .env 里已存的那把
+    model: str
+    max_tokens: int | None = None
+
+
+class LLMUpstreamTestIn(BaseModel):
+    protocol: str | None = None
+    endpoint: str
+    api_key: str | None = None
+    model: str
+
+
+# 这三个端点会读写含密钥的 .env，靠全局 auth_middleware 保护（/settings 不在豁免名单）
+@app.get("/settings/llm-upstream")
+def llm_upstream_get():
+    from . import llm_upstream
+    return llm_upstream.read_state()
+
+
+@app.post("/settings/llm-upstream/test")
+def llm_upstream_test(body: LLMUpstreamTestIn):
+    from . import llm_upstream
+    key = (body.api_key or "").strip() or llm_upstream.existing_key()
+    return llm_upstream.probe(body.protocol or "", body.endpoint, key, body.model)
+
+
+@app.post("/settings/llm-upstream")
+def llm_upstream_apply(body: LLMUpstreamIn):
+    from . import llm_upstream
+    try:
+        return llm_upstream.apply(body.protocol or "", body.endpoint,
+                                  body.api_key, body.model, body.max_tokens)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.post("/inbox/upload", dependencies=[Depends(_require_bearer)])
 async def inbox_upload(request: Request, filename: str = Query(...)):
-    if not filename.endswith((".txt", ".srt")):
-        raise HTTPException(400, "only .txt/.srt accepted")
-    # 红队加固：文件名净化防路径穿越（../、绝对路径、空字节逃逸 inbox）
+    if not filename.endswith((".txt", ".srt", ".md")):
+        raise HTTPException(400, "only .txt/.srt/.md accepted")
     import re as _re
-    safe = Path(filename).name  # 只取最后一段，剥离目录分量
+    safe = Path(filename).name
     safe = _re.sub(r"[^A-Za-z0-9_.\-\u4e00-\u9fff]", "_", safe)
     if not safe or safe in (".", "..") or safe.startswith("."):
         raise HTTPException(400, "invalid filename")
+    content = await request.body()
+
+    if safe.endswith(".md"):
+        import sys as _sys
+        _root = str(Path(config.ROOT).parent)
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        from memcore.paths import INBOX
+        staging = INBOX / "chat_imports"
+        staging.mkdir(parents=True, exist_ok=True)
+        dest = staging / safe
+        if not dest.resolve().is_relative_to(staging.resolve()):
+            raise HTTPException(400, "invalid filename")
+        dest.write_bytes(content)
+        try:
+            from memcore.import_chat import import_files
+            import_files([dest], run_cycle=True, detach_cycle=True, quiet=True)
+        except Exception as e:
+            logging.getLogger(__name__).warning("chat import trigger failed: %s", e)
+        return {"saved": str(dest), "bytes": len(content),
+                "kind": "chat_import", "status": "started"}
+
     inbox = config.inbox_dir()
     inbox.mkdir(parents=True, exist_ok=True)
     dest = inbox / safe
     if not dest.resolve().is_relative_to(inbox.resolve()):
         raise HTTPException(400, "invalid filename")
-    content = await request.body()
     dest.write_bytes(content)
     try:
         saved = str(dest.relative_to(config.ROOT))
@@ -679,3 +738,14 @@ async def inbox_upload(request: Request, filename: str = Query(...)):
         saved = str(dest)
     return {"saved": saved, "bytes": len(content),
             "ingest_hint": "POST /ingest to scan"}
+
+
+@app.get("/ingest/import-status", dependencies=[Depends(_require_bearer)])
+def import_status():
+    """返回最近一次聊天记录导入的状态。"""
+    import sys as _sys
+    _root = str(Path(config.ROOT).parent)
+    if _root not in _sys.path:
+        _sys.path.insert(0, _root)
+    from memcore.import_chat import read_status
+    return read_status()

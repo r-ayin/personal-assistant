@@ -48,7 +48,8 @@ def load_config(path: Path = CONFIG_PATH) -> dict:
     cfg = _substitute(cfg, dict(os.environ))
     # 环境覆盖后端选择（便于不改动 default.json 临时切换）
     for env_key, section in (("PA_LLM_BACKEND", "llm"), ("PA_ASR_BACKEND", "asr"),
-                             ("PA_EMBEDDER", "embedder"), ("PA_SPEAKER_BACKEND", "speaker")):
+                             ("PA_EMBEDDER", "embedder"), ("PA_SPEAKER_BACKEND", "speaker"),
+                             ("PA_WEB_BACKEND", "web")):
         val = os.environ.get(env_key)
         if val and section in cfg:
             cfg[section]["backend"] = val

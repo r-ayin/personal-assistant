@@ -138,6 +138,57 @@ export interface LLMConfig {
   uses_max_completion_tokens?: boolean;
 }
 
+/** 一侧（PA 或融合记忆系统）的 LLM 上游现状；密钥只回掩码 */
+export interface LLMUpstreamSide {
+  env_file: string;
+  env_exists?: boolean;
+  backend?: string;
+  provider?: string;
+  endpoint: string;
+  base_url?: string;
+  api_key_masked: string;
+  has_api_key: boolean;
+  model: string;
+  /** PA 侧：配置是来自 .env 的 PA_LLM_*，还是回退到 default.json 占位符的生效值 */
+  from_env?: boolean;
+  moment_endpoint?: string;
+  moment_model?: string;
+  effective?: Record<string, unknown> | null;
+}
+
+/** GET /settings/llm-upstream */
+export interface LLMUpstreamState {
+  protocols: string[];
+  pa: LLMUpstreamSide;
+  fused: LLMUpstreamSide;
+  consistent: boolean;
+  /** null = 两侧密钥无从比对（一侧来自 default.json 占位符） */
+  key_match?: boolean | null;
+  note: string;
+  applied?: Record<string, unknown>;
+}
+
+/** POST /settings/llm-upstream/test */
+export interface LLMUpstreamProbe {
+  ok: boolean;
+  protocol?: string;
+  url?: string;
+  status?: number;
+  latency_ms?: number;
+  reply_head?: string;
+  error?: string;
+  detail?: string;
+}
+
+/** 提交给 test / apply 的入参；api_key 留空表示沿用两侧 .env 里已存的那把 */
+export interface LLMUpstreamInput {
+  protocol?: string;
+  endpoint: string;
+  api_key?: string;
+  model: string;
+  max_tokens?: number;
+}
+
 export type PersonalityPreset = "gentle" | "rational" | "lively" | "coach";
 export type PersonalityInitiative = "quiet" | "restrained" | "balanced" | "active" | "companion";
 export type PersonalityReplyLength = "short" | "balanced" | "detailed";

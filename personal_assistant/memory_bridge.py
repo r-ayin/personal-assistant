@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 import json
+import os
 import sqlite3
 import sys
 import time
@@ -34,6 +35,31 @@ _MOMENTS_DB = MEMORY_ROOT / "moments.db"
 _L1_PATH = MEMORY_ROOT / "memory" / "cockpit-memory.md"
 _CONTENT_DIR = MEMORY_ROOT / "content"
 _INBOX_DIR = MEMORY_ROOT / "inbox"
+
+
+def _fused_env() -> dict:
+    """子进程环境：注入融合记忆系统根 .env 的变量。
+
+    cycle.sh 是靠 `set -a; . .env` 才有 INFO_LLM_* / MOMENT_LLM_* / TDAI_GATEWAY_*
+    这些变量的；本模块用 subprocess 直接调根目录脚本时没走 cycle.sh，
+    子进程因此读不到 LLM 配置，wiki_build.py 会抛 NoLLMConfigured。
+    用 setdefault 语义：PA 进程环境里已有的值优先，不被 .env 覆盖。
+    """
+    env = dict(os.environ)
+    p = MEMORY_ROOT / ".env"
+    if not p.exists():
+        return env
+    try:
+        raw = p.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return env
+    for line in raw:
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, _, v = s.partition("=")
+        env.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    return env
 
 
 # ── 用户画像维度（承袭原 distill.DIMENSIONS，recommend/api 依赖）────
@@ -367,7 +393,8 @@ class DistillationEngine:
         if not script.exists():
             return {"error": "融合记忆系统 build_memory.py 不存在"}
         r = subprocess.run([sys.executable, str(script)], cwd=str(MEMORY_ROOT),
-                           capture_output=True, text=True, timeout=300)
+                           capture_output=True, text=True, timeout=300,
+                           env=_fused_env())
         return {"distilled": 1 if r.returncode == 0 else 0,
                 "stdout_tail": (r.stdout or "")[-300:],
                 "returncode": r.returncode}
@@ -384,7 +411,8 @@ def wiki_build() -> dict:
     if not script.exists():
         return {"error": "融合记忆系统 wiki_build.py 不存在"}
     r = subprocess.run([sys.executable, str(script)], cwd=str(MEMORY_ROOT),
-                       capture_output=True, text=True, timeout=600)
+                       capture_output=True, text=True, timeout=600,
+                       env=_fused_env())
     return {"new_pages": 0, "extended": 0, "returncode": r.returncode,
             "stdout_tail": (r.stdout or "")[-300:]}
 

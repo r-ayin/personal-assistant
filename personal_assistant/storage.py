@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS interventions(
 CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS speakers(
   name TEXT PRIMARY KEY, label TEXT, embedding BLOB, note TEXT, created_at TEXT);
+CREATE TABLE IF NOT EXISTS voiceprint_clusters(
+  source_file TEXT, cluster TEXT, embedding BLOB, seconds REAL,
+  assigned_role TEXT, created_at TEXT, PRIMARY KEY(source_file, cluster));
 CREATE TABLE IF NOT EXISTS events(
   id TEXT PRIMARY KEY, title TEXT, when_dt TEXT, when_raw TEXT, who TEXT,
   "where" TEXT, source_segment TEXT, created_at TEXT);
@@ -554,6 +557,41 @@ def upsert_speaker(name: str, label: str = "", embedding: bytes | None = None, n
 def speakers_all():
     with connect() as c:
         return [dict(r) for r in c.execute("SELECT name,label,note,created_at FROM speakers")]
+
+
+def speakers_with_embedding():
+    with connect() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT name,label,embedding,note FROM speakers WHERE embedding IS NOT NULL")]
+
+
+def get_speaker(name: str):
+    with connect() as c:
+        r = c.execute("SELECT name,label,embedding,note FROM speakers WHERE name=?", (name,)).fetchone()
+        return dict(r) if r else None
+
+
+def upsert_cluster(source_file: str, cluster: str, embedding: bytes, seconds: float):
+    with connect() as c:
+        c.execute("INSERT INTO voiceprint_clusters(source_file,cluster,embedding,seconds,assigned_role,created_at) "
+                  "VALUES(?,?,?,?,NULL,?) ON CONFLICT(source_file,cluster) DO UPDATE SET "
+                  "embedding=excluded.embedding, seconds=excluded.seconds, created_at=excluded.created_at",
+                  (source_file, cluster, embedding, seconds, now_iso()))
+        c.commit()
+
+
+def clusters_for_file(source_file: str):
+    with connect() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT source_file,cluster,embedding,seconds,assigned_role FROM voiceprint_clusters "
+            "WHERE source_file=? ORDER BY cluster", (source_file,))]
+
+
+def assign_cluster_role(source_file: str, cluster: str, role: str):
+    with connect() as c:
+        c.execute("UPDATE voiceprint_clusters SET assigned_role=? WHERE source_file=? AND cluster=?",
+                  (role, source_file, cluster))
+        c.commit()
 
 
 # ── 日历事件 ────────────────────────────────────────────────────

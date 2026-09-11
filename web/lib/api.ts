@@ -5,6 +5,9 @@ import type {
   ChatLog,
   Event,
   LLMConfig,
+  LLMUpstreamInput,
+  LLMUpstreamProbe,
+  LLMUpstreamState,
   Memory,
   Moment,
   PersonalityPreview,
@@ -186,6 +189,12 @@ export const api = {
   ingest: () => post<unknown>("/ingest"),
   llmSettings: () => requiredGet<LLMConfig>("/settings/llm"),
   updateLLM: (body: Partial<LLMConfig>) => requiredPost<LLMConfig>("/settings/llm", body),
+  // 全项目 LLM 上游：一份配置同步到 PA 与融合记忆系统两侧
+  llmUpstream: () => requiredGet<LLMUpstreamState>("/settings/llm-upstream"),
+  testLLMUpstream: (body: LLMUpstreamInput) =>
+    requiredPost<LLMUpstreamProbe>("/settings/llm-upstream/test", body),
+  applyLLMUpstream: (body: LLMUpstreamInput) =>
+    requiredPost<LLMUpstreamState>("/settings/llm-upstream", body),
   uploadInbox: async (filename: string, content: ArrayBuffer) => {
     try {
       return await request<unknown>(`/inbox/upload?filename=${encodeURIComponent(filename)}`, {

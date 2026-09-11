@@ -99,12 +99,103 @@ class FasterWhisperTranscriber(Transcriber):
         return segs
 
 
+class RemoteWhisperTranscriber(Transcriber):
+    """走 OpenAI 兼容的 /v1/audio/transcriptions 远端转写。
+
+    部署机只有 2 核 1.8GB 内存且无 GPU，本地 faster_whisper 跑 large-v3-turbo
+    不现实；GPU 机上的服务已经由 frp 隧道 + nginx /asr/ 反代暴露成 OpenAI 兼容
+    接口。PA 与隧道同机时把 base_url 指到 127.0.0.1，请求不出公网，token 也
+    不必暴露到外网。
+    """
+
+    def transcribe(self, audio_path: str) -> list[Segment]:
+        import json
+        import mimetypes
+        import urllib.error
+        import urllib.request
+        import uuid
+
+        c = config.get("asr.remote_whisper", {}) or {}
+        base = str(c.get("base_url") or "").strip().rstrip("/")
+        api_key = str(c.get("api_key") or "").strip()
+
+        # config 的 ${VAR} 只替换 env 里存在的键，缺失时字面量会原样留下，
+        # 直接拿去请求会得到一个看不懂的 URLError，所以在这里拦住。
+        for name, val in (("PA_ASR_BASE_URL", base), ("PA_ASR_API_KEY", api_key)):
+            if "${" in val:
+                raise ValueError(f"asr.remote_whisper 缺少环境变量 {name}（当前值仍是未替换的占位符）")
+        if not base:
+            raise ValueError("asr.remote_whisper.base_url 未配置，无法使用 remote_whisper 后端")
+
+        url = base if base.endswith("/audio/transcriptions") else base + "/audio/transcriptions"
+        model = c.get("model", "large-v3-turbo")
+        timeout = float(c.get("timeout_sec", 300))
+        language = c.get("language") or config.get("asr.language", "zh")
+
+        p = Path(audio_path)
+        if not p.exists():
+            raise FileNotFoundError(audio_path)
+
+        boundary = uuid.uuid4().hex
+        fields = {"model": str(model), "response_format": "verbose_json"}
+        if language:
+            fields["language"] = str(language)
+        parts = []
+        for k, v in fields.items():
+            parts.append(
+                f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode("utf-8")
+            )
+        ctype = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
+        parts.append(
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{p.name}"\r\n'
+            f"Content-Type: {ctype}\r\n\r\n".encode("utf-8")
+        )
+        parts.append(p.read_bytes())
+        parts.append(f"\r\n--{boundary}--\r\n".encode("utf-8"))
+
+        req = urllib.request.Request(url, data=b"".join(parts), method="POST")
+        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        if api_key:
+            req.add_header("Authorization", f"Bearer {api_key}")
+
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "replace")[:300]
+            raise RuntimeError(f"ASR 端点返回 HTTP {e.code}: {detail}") from e
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"ASR 端点不可达 {url}: {e.reason}") from e
+
+        raw_segs = payload.get("segments") or []
+        if not raw_segs:
+            # 端点对静音/无人声返回空 segments。有整段 text 时用端点自己给的
+            # duration 兜一个粗时间轴；两者都空就返回空，绝不编造内容。
+            text_all = str(payload.get("text") or "").strip()
+            if not text_all:
+                return []
+            raw_segs = [{"start": 0.0, "end": float(payload.get("duration") or 0.0), "text": text_all}]
+
+        lang = payload.get("language") or language or "zh"
+        segs = []
+        for i, s in enumerate(raw_segs):
+            txt = str(s.get("text") or "").strip()
+            if not txt:
+                continue
+            segs.append(Segment(f"{p.stem}-{i:03d}", p.name,
+                                float(s.get("start") or 0.0), float(s.get("end") or 0.0),
+                                txt, "user", lang, ""))
+        return segs
+
+
 def get_transcriber() -> Transcriber:
     backend = config.get("asr.backend", "stub")
     if backend == "stub":
         return StubTranscriber()
     if backend == "faster_whisper":
         return FasterWhisperTranscriber()
+    if backend == "remote_whisper":
+        return RemoteWhisperTranscriber()
     raise ValueError(f"unknown asr backend: {backend}")
 
 
@@ -138,6 +229,13 @@ class IngestionPipeline:
                 return 0
             now = storage.now_iso()
             segs = self.transcriber.transcribe(audio_path)
+            # 声纹归角色：远程 diarize 单文件聚类 + 本地 MFCC 库跨文件匹配。
+            # 未配置/不可用时保持 transcriber 的默认 speaker，不瞎猜角色。
+            if config.get("speaker.backend", "text") == "remote":
+                from .speaker import RemoteDiarizer
+                _dz = RemoteDiarizer()
+                if _dz.available():
+                    _dz.label_segments(segs, audio_path)
             for s in segs:
                 s.created_at = now
                 c.execute("INSERT OR IGNORE INTO segments(id,source_file,start_sec,end_sec,text,speaker,language,created_at,processed,time_kind) VALUES(?,?,?,?,?,?,?,?,?,?)", s.to_tuple())

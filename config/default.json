@@ -83,10 +83,22 @@
     },
     "stub": {
       "allow_fake": false
+    },
+    "remote_whisper": {
+      "base_url": "${PA_ASR_BASE_URL}",
+      "api_key": "${PA_ASR_API_KEY}",
+      "model": "large-v3-turbo",
+      "language": "zh",
+      "timeout_sec": 300
     }
   },
   "speaker": {
     "backend": "text",
+    "voiceprint_threshold": 0.92,
+    "remote": {
+      "base_url": "${PA_ASR_BASE_URL}",
+      "api_key": "${PA_ASR_API_KEY}"
+    },
     "pyannote": {
       "hf_token_env": "HF_TOKEN",
       "model": "pyannote/speaker-diarization-3.1"
