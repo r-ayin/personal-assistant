@@ -5,7 +5,7 @@
 <h1 align="center">记忆的留白</h1>
 
 <p align="center">
-  <b>personal-assistant · 一个令人感动的记忆系统</b><br />
+  <b>属于人类的记忆 · 一个令人感动的记忆系统</b><br />
   <sub><i>检索的时代已经通关。我们做的是下一件事：当记忆有了分量，系统该如何回应。</i></sub>
 </p>
 
@@ -80,7 +80,7 @@
    → 检索层（混合召回 + 向量 + 图谱）——已通关的地基，只在被需要时出现
 
 前端：Web（年轮 · 墨迹设计语言）/ Android / ESP32-S3 录音固件 / 桌面弹幕壳
-后端：PA FastAPI 单一进程 · SQLite / DuckDB · 本地 LLM 可切换（stub / ollama / openai_compat）
+后端：属于人类的记忆 · FastAPI 单一进程 · SQLite / DuckDB · 本地 LLM 可切换（stub / ollama / openai_compat）
 声纹：本地 MFCC 声纹库 →「声纹 → 角色」跨录音稳定对应（voiceprint.py）
 ```
 
@@ -89,9 +89,11 @@
 
 ## 记忆系统结构
 
-记忆不是单个库，而是「本地三层 + 融合双层」的结构。
+记忆不是单个库，而是「三层核心 + 融合双层」的一体结构。
 
-### PA 本地三层记忆（v0.10，融合 TencentDB Agent Memory 架构）
+### 三层核心：从证据到自叙事
+
+这套三层结构不是借来的框架，而是从第一性原理改造完全的答案：片段是证据，L1 是被理解的记忆，L2 是一段时期的叙事，L3 是系统对你的自叙事——每一层都为「回应」而非「检索」服务。
 
 | 层 | 表 | 存什么 | 关键字段 |
 |---|---|---|---|
@@ -101,16 +103,16 @@
 | L3 人格 | `persona_versions` | 版本化叙事档案 | ≤2000 字符叙事、`change_summary` |
 | 声纹层 | `speakers` | MFCC 声纹向量 | 跨录音「声纹 → 角色」稳定对应 |
 
-### 融合记忆系统（桥接契约）
+### 融合记忆层（桥接契约）
 
-PA 通过 `memory_bridge.py` 接入上一级「个人助手」融合记忆系统，契约只有两句：
+系统由两层一体构成：对话感知层（本仓库后端）与融合记忆层（信息层 + 时刻层）。二者经 `memory_bridge.py` 以两句契约相连：
 
 - **只读消费** —— 信息层 `cockpit.db`(wiki_pages) + L1 摘要 md + `content/` 原文；时刻层 `moments.db`（`verbatim_quote` / `narrative` / `tags` / `recalled`）。
-- **单一摄入、双头提取** —— 写路径只向 `inbox/` 投递，由融合系统的 `cycle.sh` 做双层提取；PA 不直接写它的任何 DB。
+- **单一摄入、双头提取** —— 写路径只向 `inbox/` 投递，由融合层的 `cycle.sh` 做双层提取；对话感知层不直接写融合层的任何 DB。
 
 ### 检索：已通关的地基
 
-混合检索 = FTS5 bigram + 向量网关（不在线自动降级）+ RRF 融合 + GA 三维终排；PA 本地为 numpy 余弦全量载入（MVP 规模）。检索只在被需要时出现——这是「留白」在工程层的实现。
+混合检索 = FTS5 bigram + 向量网关（不在线自动降级）+ RRF 融合 + GA 三维终排；本地为 numpy 余弦全量载入（MVP 规模）。检索只在被需要时出现——这是「留白」在工程层的实现。
 
 ## 开发板（ESP32-S3）说明
 
@@ -127,9 +129,9 @@ PA 通过 `memory_bridge.py` 接入上一级「个人助手」融合记忆系统
 ## 项目架构
 
 ```text
-客户端  Web（Next.js 静态导出，PA 挂载 web/dist）/ Android / ESP32-S3 / 桌面弹幕壳（Electron 只连）
+客户端  Web（Next.js 静态导出，后端挂载 web/dist）/ Android / ESP32-S3 / 桌面弹幕壳（Electron 只连）
    ↓ HTTP / WS :8004
-PA FastAPI 单进程
+属于人类的记忆 · FastAPI 单进程
    ├─ 对话与编排   chat / proactive / recommend / reminders / calendar
    ├─ 记忆         memory_bridge（融合只读 + inbox 投递）/ storage（本地三层）/ verify（反幻觉）
    ├─ 感知         asr / voiceprint / temporal / transcript / ingest
@@ -138,7 +140,7 @@ PA FastAPI 单进程
    ↓
 存储  SQLite（segments/memories/scenes/persona_versions/interventions/kv/speakers）+ DuckDB（ASR 中间）
    ⇣ 只读
-融合记忆系统  cockpit.db（wiki 信息层）/ moments.db（时刻层）/ memory.db（画像与复杂度指标）
+融合记忆层  cockpit.db（wiki 信息层）/ moments.db（时刻层）/ memory.db（画像与复杂度指标）——与上层同属一个系统
 ```
 
 后端可切换（`config/default.yaml` + 运行时 `/settings/llm` 热改，本地失败明确报错、不静默回退云端）：
@@ -156,7 +158,7 @@ PA FastAPI 单进程
 - **时间观（temporal.py）**：区分 received（记录时间）与 occurred（真实发生时间）；没有设备时间戳就承认不可得，不猜。
 - **声纹（voiceprint.py）**：MFCC 均值+标准差向量入库，余弦阈值内归角色、阈值外标未知；仅 16-bit PCM WAV，其它格式有 ffmpeg 则转码、否则只做单文件 diarize——降级但不报错。
 - **去重合并**：`memories.version` 单调递增保留 update/merge 溯源；`priority` 0–100 为 L1 重要度。
-- **统一上游（llm_upstream.py）**：融合系统与 PA 两套 LLM 配置一键同步，消灭「同一上游两处各写一遍」。
+- **统一上游（llm_upstream.py）**：融合层与对话感知层两套 LLM 配置一键同步，消灭「同一上游两处各写一遍」。
 - **测试**：pytest + stub 后端端到端（`PA_LLM_BACKEND=stub …`），渲染守卫等 23+ 项常绿。
 
 ## 复杂度指标分析方法
@@ -192,6 +194,8 @@ cd web && npm install && npm run build && cd ..
 python3 -m personal_assistant.cli serve --host 127.0.0.1 --port 8004
 # 打开 http://127.0.0.1:8004/web/
 ```
+
+（命令行模块名 `personal_assistant` 为历史遗留标识符；产品名为「属于人类的记忆」。）
 
 隔离端到端验证（不依赖真实模型）：
 

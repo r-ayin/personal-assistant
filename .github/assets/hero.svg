@@ -48,7 +48,7 @@
   <rect x="564" y="192" width="430" height="5" rx="2.5" fill="#D6382B"/>
   <text x="564" y="244" font-family="Noto Serif SC, Songti SC, STSong, SimSun, serif" font-weight="600" font-size="24" fill="#59616A" letter-spacing="3">一个令人感动的记忆系统</text>
   <text x="564" y="288" font-family="Noto Sans SC, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" fill="#8B939C" letter-spacing="1">检索已经通关 · 我们专注记忆的留白 —— 如何回应最有分量的回忆</text>
-  <text x="564" y="318" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#8B939C" letter-spacing="0.5">personal-assistant — selective return · narrative over data · honest silence</text>
+  <text x="564" y="318" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#8B939C" letter-spacing="0.5">属于人类的记忆 — selective return · narrative over data · honest silence</text>
 
   <!-- 朱砂印章 -->
   <g clip-path="url(#sealclip)">
