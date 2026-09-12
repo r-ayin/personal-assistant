@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="README.en.md">English</a> ·
   <a href="#系统是什么样子">系统</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="web/design-system/DESIGN.md">设计语言「年轮 · 墨迹」</a> ·
