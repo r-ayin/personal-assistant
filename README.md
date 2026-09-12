@@ -87,6 +87,102 @@
 设计系统是一个标准 **OpenDesign 包**（`web/design-system/`，od-design-system-project/v1）：
 瓷白纸面 + 松烟墨线 + 朱砂落印，动效合约「生长与断裂」。唯一事实源见 [design-system/DESIGN.md](web/design-system/DESIGN.md)。
 
+## 记忆系统结构
+
+记忆不是单个库，而是「本地三层 + 融合双层」的结构。
+
+### PA 本地三层记忆（v0.10，融合 TencentDB Agent Memory 架构）
+
+| 层 | 表 | 存什么 | 关键字段 |
+|---|---|---|---|
+| 原始片段层 | `segments` | 转写/文本片段 | 时间区间、说话人、`time_kind`（received 记录时间 / occurred 真实发生时间） |
+| L1 记忆 | `memories` | 一条被理解的记忆 | `content`、`evidence` 逐字引证、`embedding`、`priority` 0–100 重要度、`version` 去重合并版本 |
+| L2 场景 | `scenes` | 时期/场景的叙事 | `summary`/`body`、`heat`、`source_mem_ids` 溯源到 L1 |
+| L3 人格 | `persona_versions` | 版本化叙事档案 | ≤2000 字符叙事、`change_summary` |
+| 声纹层 | `speakers` | MFCC 声纹向量 | 跨录音「声纹 → 角色」稳定对应 |
+
+### 融合记忆系统（桥接契约）
+
+PA 通过 `memory_bridge.py` 接入上一级「个人助手」融合记忆系统，契约只有两句：
+
+- **只读消费** —— 信息层 `cockpit.db`(wiki_pages) + L1 摘要 md + `content/` 原文；时刻层 `moments.db`（`verbatim_quote` / `narrative` / `tags` / `recalled`）。
+- **单一摄入、双头提取** —— 写路径只向 `inbox/` 投递，由融合系统的 `cycle.sh` 做双层提取；PA 不直接写它的任何 DB。
+
+### 检索：已通关的地基
+
+混合检索 = FTS5 bigram + 向量网关（不在线自动降级）+ RRF 融合 + GA 三维终排；PA 本地为 numpy 余弦全量载入（MVP 规模）。检索只在被需要时出现——这是「留白」在工程层的实现。
+
+## 开发板（ESP32-S3）说明
+
+| 项 | 说明 |
+|---|---|
+| 板型 | `genjutech-s3-1.54tft`（ESP32-S3 + 1.54" TFT），固件 `boards/` 目录 |
+| 固件工程 | `scripts/xiaozhi-esp32/`（基于 xiaozhi-esp32）+ `components/background_audio/` |
+| 当前形态 | 纯录音设备（v0.12 裁剪）：麦克风采集 + 背景音频推流，PCM → `ws://<pc>:<port>/ws/audio` |
+| 已删 | 实时对话 / TTS / 唤醒词 / MCP |
+| 保留 | display 状态反馈、protocol 基类、background_audio、LED、OTA、settings、system_info |
+| 配置 | `sdkconfig.defaults.esp32s3`（关唤醒词 TTS）；推流期间禁止进入省电休眠 |
+| 构建 | `scripts/build-idf.py` + `build-local.*`；GitHub Actions ESP-IDF 容器云编译；`qemu-test.ps1` |
+
+## 项目架构
+
+```text
+客户端  Web（Next.js 静态导出，PA 挂载 web/dist）/ Android / ESP32-S3 / 桌面弹幕壳（Electron 只连）
+   ↓ HTTP / WS :8004
+PA FastAPI 单进程
+   ├─ 对话与编排   chat / proactive / recommend / reminders / calendar
+   ├─ 记忆         memory_bridge（融合只读 + inbox 投递）/ storage（本地三层）/ verify（反幻觉）
+   ├─ 感知         asr / voiceprint / temporal / transcript / ingest
+   ├─ 表达         speaker / assistant_personality（版本化人格，与用户画像分离）
+   └─ 配置         config / llm / llm_upstream（全项目上游一键同步）/ auth
+   ↓
+存储  SQLite（segments/memories/scenes/persona_versions/interventions/kv/speakers）+ DuckDB（ASR 中间）
+   ⇣ 只读
+融合记忆系统  cockpit.db（wiki 信息层）/ moments.db（时刻层）/ memory.db（画像与复杂度指标）
+```
+
+后端可切换（`config/default.yaml` + 运行时 `/settings/llm` 热改，本地失败明确报错、不静默回退云端）：
+
+| 组件 | dev | prod |
+|---|---|---|
+| ASR | `stub` | `faster_whisper`（large-v3, CUDA） |
+| LLM | `stub` / `anthropic_proxy` | `ollama` / `openai_compat` / `deepseek` / `glm_anthropic` |
+| Embedder | `hashing` | `openai_compat` |
+| Speaker | `text` | 本地 TTS |
+
+## 实现方式要点
+
+- **反幻觉（verify.py）**：每个 LLM 抽取环节后强制复查——时间由 `temporal` 确定性规则重解为权威，LLM 编造的日期直接删；`when_raw` 必须逐字落地源转录或日期等价；记忆的 `evidence/segment_id` 必须存在且 content bigram 可溯源。**每条结论都能回溯到真实转录。**
+- **时间观（temporal.py）**：区分 received（记录时间）与 occurred（真实发生时间）；没有设备时间戳就承认不可得，不猜。
+- **声纹（voiceprint.py）**：MFCC 均值+标准差向量入库，余弦阈值内归角色、阈值外标未知；仅 16-bit PCM WAV，其它格式有 ffmpeg 则转码、否则只做单文件 diarize——降级但不报错。
+- **去重合并**：`memories.version` 单调递增保留 update/merge 溯源；`priority` 0–100 为 L1 重要度。
+- **统一上游（llm_upstream.py）**：融合系统与 PA 两套 LLM 配置一键同步，消灭「同一上游两处各写一遍」。
+- **测试**：pytest + stub 后端端到端（`PA_LLM_BACKEND=stub …`），渲染守卫等 23+ 项常绿。
+
+## 复杂度指标分析方法
+
+画像页的「复杂度指标」与「指标科普」来自 `memcore/metrics.py`，方法学契约写在 `web/lib/metrics-science.ts`：**每个指标必须回答五件事**——出处（论文/作者/年份）、直觉上量的是什么、公式、怎么读、效度（零假设基线怎么造 / CI 怎么算 / 出数门槛 / 已知局限）。
+
+五组十九个指标：
+
+| 组 | 指标 |
+|---|---|
+| 时间节律 | `circadian_strength`（1 − H(24h 直方图)/ln24）、`weekly_rhythm`、`burstiness_global/person`、`inter_event_alpha` |
+| 社交结构 | `signature_shares`、`dunbar_layers`、`social_entropy`、`contact_diversity` |
+| 复杂动力学 | `sample_entropy`、`permutation_entropy`、`dfa_alpha`、`rqa`、`hmm_states`、`ews_autocorr` |
+| 语言与内容 | `attention_zipf`、`topic_entropy` |
+| 网络 | `cooccurrence_network`、`multiplex_pagerank` |
+
+效度三条铁律：
+
+1. **置换零基线** —— 如 circadian 用日内时钟置换 600 次、单侧 greater；与随机无显著差异就不出数。
+2. **置信区间随值走** —— delete-one-day jackknife 等；每个值带 `ci_low/ci_high/n`。
+3. **出数门槛** —— 不到门槛灰显并给理由（如消息 ≥200 且天数 ≥20），**不编数**。
+
+科普页只讲方法、不放任何个人数字；个人数值与它的 eligible / ineligible_reason 在「复杂度指标」tab（metric 表：value / ci / n / null_baseline / params）。
+
+---
+
 ## 快速开始
 
 ```bash
