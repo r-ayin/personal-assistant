@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420">
+  <defs>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.08 0 0 0 0 0.09 0 0 0 0 0.10 0 0 0 0.05 0"/>
+    </filter>
+    <filter id="inkedge" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="3" result="t"/>
+      <feDisplacementMap in="SourceGraphic" in2="t" scale="4"/>
+    </filter>
+    <clipPath id="sealclip"><rect x="1128" y="296" width="76" height="76" rx="10"/></clipPath>
+  </defs>
+
+  <!-- 瓷白纸面 -->
+  <rect width="1280" height="420" fill="#F5F5F2"/>
+  <rect width="1280" height="420" filter="url(#grain)" opacity="0.6"/>
+
+  <!-- 年轮：双心干涉，环=时期，第7环加粗，留缺口=断裂 -->
+  <g fill="none" filter="url(#inkedge)">
+    <g stroke="#14161A">
+      <!-- 主年轮群 cx=280 -->
+      <circle cx="280" cy="210" r="24" stroke-opacity="0.30" stroke-width="1.2"/>
+      <circle cx="280" cy="210" r="38" stroke-opacity="0.14" stroke-width="1"/>
+      <circle cx="280" cy="210" r="52" stroke-opacity="0.12" stroke-width="1"/>
+      <circle cx="280" cy="210" r="66" stroke-opacity="0.14" stroke-width="1"/>
+      <circle cx="280" cy="210" r="80" stroke-opacity="0.10" stroke-width="1"/>
+      <circle cx="280" cy="210" r="94" stroke-opacity="0.12" stroke-width="1"/>
+      <circle cx="280" cy="210" r="108" stroke-opacity="0.22" stroke-width="2"/>
+      <circle cx="280" cy="210" r="122" stroke-opacity="0.10" stroke-width="1" stroke-dasharray="330 46"/>
+      <circle cx="280" cy="210" r="136" stroke-opacity="0.12" stroke-width="1"/>
+      <circle cx="280" cy="210" r="150" stroke-opacity="0.09" stroke-width="1" stroke-dasharray="420 60"/>
+      <circle cx="280" cy="210" r="164" stroke-opacity="0.11" stroke-width="1"/>
+      <circle cx="280" cy="210" r="178" stroke-opacity="0.07" stroke-width="1"/>
+      <!-- 次年轮群（摩尔纹干涉）cx=340 偏移 -->
+      <circle cx="345" cy="235" r="60" stroke-opacity="0.06" stroke-width="1"/>
+      <circle cx="345" cy="235" r="88" stroke-opacity="0.06" stroke-width="1"/>
+      <circle cx="345" cy="235" r="116" stroke-opacity="0.05" stroke-width="1"/>
+      <circle cx="345" cy="235" r="144" stroke-opacity="0.05" stroke-width="1" stroke-dasharray="300 70"/>
+      <circle cx="345" cy="235" r="172" stroke-opacity="0.04" stroke-width="1"/>
+    </g>
+    <!-- 朱砂核心：树心一点 -->
+    <circle cx="280" cy="210" r="7" fill="#D6382B" stroke="none" opacity="0.9"/>
+  </g>
+
+  <!-- 右侧排版 -->
+  <text x="560" y="168" font-family="Noto Serif SC, Songti SC, STSong, SimSun, serif" font-weight="700" font-size="72" fill="#14161A" letter-spacing="10">记忆的留白</text>
+  <!-- 朱砂下划线（自生长定格） -->
+  <rect x="564" y="192" width="430" height="5" rx="2.5" fill="#D6382B"/>
+  <text x="564" y="244" font-family="Noto Serif SC, Songti SC, STSong, SimSun, serif" font-weight="600" font-size="24" fill="#59616A" letter-spacing="3">一个令人感动的记忆系统</text>
+  <text x="564" y="288" font-family="Noto Sans SC, PingFang SC, Microsoft YaHei, sans-serif" font-size="16" fill="#8B939C" letter-spacing="1">检索已经通关 · 我们专注记忆的留白 —— 如何回应最有分量的回忆</text>
+  <text x="564" y="318" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" fill="#8B939C" letter-spacing="0.5">personal-assistant — selective return · narrative over data · honest silence</text>
+
+  <!-- 朱砂印章 -->
+  <g clip-path="url(#sealclip)">
+    <rect x="1128" y="296" width="76" height="76" fill="#D6382B"/>
+    <rect x="1128" y="296" width="76" height="76" filter="url(#grain)" opacity="0.35"/>
+    <text x="1166" y="330" text-anchor="middle" font-family="Noto Serif SC, Songti SC, SimSun, serif" font-weight="700" font-size="26" fill="#F5F5F2">留</text>
+    <text x="1166" y="360" text-anchor="middle" font-family="Noto Serif SC, Songti SC, SimSun, serif" font-weight="700" font-size="26" fill="#F5F5F2">白</text>
+  </g>
+
+  <!-- 底部一线墨痕 -->
+  <rect x="0" y="414" width="1280" height="2" fill="#14161A" opacity="0.18"/>
+</svg>
