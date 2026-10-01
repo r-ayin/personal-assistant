@@ -15,8 +15,10 @@ const KIND_LABEL: Record<string, string> = {
 export default function PortraitMetricsPanel() {
   const { loading, error, data } = useAsync(() => api.portraitMetrics(), []);
 
+  // 默认只展示「我」：其他人物/会话的指标从 关系圈 → 点人 → 单人档案 看，
+  // 不在这一页平铺（551+ 行的全量列表把「我的数」淹没了）。
   const groups = useMemo(() => {
-    const rows = data?.metrics ?? [];
+    const rows = (data?.metrics ?? []).filter((r) => r.subject_kind === "self");
     const g = new Map<string, PortraitMetricRow[]>();
     for (const r of rows) {
       const k = r.subject_kind;
@@ -41,6 +43,9 @@ export default function PortraitMetricsPanel() {
     <div className="space-y-10">
       <p className="max-w-[70ch] text-[12.5px] leading-relaxed text-[var(--text-dim)]">
         <Rich text={METRICS_INTRO} />
+      </p>
+      <p className="max-w-[70ch] text-[12px] leading-relaxed text-[var(--text-weak)]">
+        这一页默认只显示你自己的指标。想看某个人的：关系圈 → 点 TA → 单人档案里带 TA 的全部指标。
       </p>
       {groups.map(([kind, rows]) => (
         <section key={kind}>

@@ -10,7 +10,7 @@
  */
 
 export type ScienceGroupId =
-  | "rhythm" | "social" | "dynamics" | "language" | "network";
+  | "rhythm" | "social" | "dynamics" | "language" | "network" | "wellbeing";
 
 export interface MetricScience {
   zh: string;
@@ -42,6 +42,7 @@ export const SCIENCE_GROUPS: { id: ScienceGroupId; zh: string; blurb: string }[]
   { id: "dynamics", zh: "复杂动力学", blurb: "把每天的状态看成一条动力轨迹：有没有记忆、有没有重复模式、有没有临近转折的信号。" },
   { id: "language", zh: "语言与内容", blurb: "聊什么、注意力是否集中在头部少数话题。" },
   { id: "network", zh: "网络", blurb: "把人当成节点：你的社交圈是几个互不相通的圈子，还是一张跨场景的网。" },
+  { id: "wellbeing", zh: "关怀与危机（文本层）", blurb: "从对话文本里留意需要有人接住的时刻：危机信号、抑郁与创伤反应分层、哀伤轨迹、以及「天气与气候」的稳定性差。词汇做语义关联（从你自己的语料共现中长出来的近邻，带在世护栏：对活着的爱人说的『想你』是爱，不是哀伤），只做分层与复核提示，永远不是诊断。" },
 ];
 
 export const METRICS_SCIENCE: Record<string, MetricScience> = {
@@ -323,7 +324,81 @@ export const METRICS_SCIENCE: Record<string, MetricScience> = {
       limits: "语音层当前为空（录音只存转写文字）；置换仅 15 次，p 分辨率 1/16≈0.063，p<0.05 几乎不可达——读它要看效应量而非 p。",
     },
   },
-};
+
+  // ── 关怀与危机（文本层，memcore/wellbeing.py v0）──────────────
+  crisis_signal_lexicon: {
+    zh: "危机信号复核通道",
+    group: "wellbeing",
+    origin: "C-SSRS 哥伦比亚自杀严重程度评定量表（Posner et al. 2011, Am J Psychiatry）意念分级的中文口语字面红线映射（刻意不做语义扩展：红线精度优先）",
+    intuition: "在对话里留意需要有人接住的话。分级对应 C-SSRS 意念轴：L1 被动意念（『不想活了』『想去找TA』——哀伤里常以团聚幻想出现）→ L2 主动意念 → L3 方法/计划 → L4 准备行为（交代后事）。任何干净命中都生成带原话的复核工单，等你亲自确认——字面判定永远不是结论。",
+    formula: "value = 近30天命中数 / 消息数 × 1000；detail 里 max_level_clean、逐条原话证据、review_required",
+    read: "看 detail 的 max_level 与原话证据，不看 value 大小。同句含娱乐/新闻语境词（跳楼机、影视引用等）标记 context_suspect，不抬复核——实测这类误报是主要噪声源。",
+    validity: {
+      null_kind: "命中在各日均匀分布的多项式重采样，统计量=单日最大命中率（检验命中是否聚集在特定日子=急性发作信号）",
+      ci_method: "删一天折刀（日命中率总率的 delete-one-fold jackknife）",
+      gate: "近30天消息 ≥30（红线通道故意低门槛：危机监测不能被样本量挡住）",
+      limits: "红线只有字面信号：听不到反讽、听不到沉默、听不到没说出口的。无命中≠无风险；有命中≠有风险。它只兜底，不替代你的在场。",
+    },
+    caveats: "为什么要被动监测：研究显示高达 60% 的自杀死亡者在生前最后一次临床接触中否认自杀意念（PMID 42753424）——主动问询会漏掉最危险的人，语言痕迹是不依赖『愿意承认』的通道。",
+  },
+  phq9_text_proxy: {
+    zh: "抑郁信号分层（语义关联）",
+    group: "wellbeing",
+    origin: "PHQ-9（Kroenke, Spitzer & Williams 2001, J Gen Intern Med；≥10 对重性抑郁 sens/spec 88%/88%）九症状域的语义关联代理",
+    intuition: "PHQ-9 问『最近两周』的九个症状域：兴趣、情绪、睡眠、食欲、疲惫、自责、专注、精神运动、自伤。这里用语义关联词表（种子词+语料共现近邻）在对话文本里数每个域的密度，映射成 0-3 分再求和——量的是『这段时间文字里的疲惫有多厚』。",
+    formula: "每域：命中率(每千条) ≥10→3, ≥5→2, ≥2→1, else 0；总分 0-27；分带 0-4/5-9/10-14/15-19/20-27",
+    read: "看分带不看原始分：≥10（中度档）值得认真关心，≥20 建议推动专业评估。p 值小=症状词聚集在特定日子（急性期信号），比总量更值得留意。",
+    validity: {
+      null_kind: "症状词命中在各日均匀分布的多项式重采样，统计量=单日最大命中率",
+      ci_method: "删一天折刀（对总分重算，只删不拼不复制）",
+      gate: "近60天消息 ≥100 且 天数 ≥14",
+      limits: "语义代理≠量表：没有追问、没有病程、没有功能评估；书面聊天里症状词天然稀薄，低分不用于安心。近窗设计的原因：全生命周期计分会把状态信号稀释成 0（实测修正）。",
+    },
+    caveats: "非诊断。第 9 域（自伤）的命中同时会被危机红线通道独立登记，此处只作总分的一分子。",
+  },
+  pcl5_text_proxy: {
+    zh: "创伤反应分层（语义关联）",
+    group: "wellbeing",
+    origin: "PCL-5（Bovin et al. 2016, Psychol Assess；α=.96，重测 r=.84；划界 31-33，CAPS-5 定标）四症状簇的语义关联代理",
+    intuition: "DSM-5 PTSD 四簇：B 闯入（闪回/噩梦/挥之不去）、C 回避（不敢想/绕开）、D 负性认知情绪（自责/麻木/疏远）、E 警觉（心慌/惊醒/易怒）。语义关联词表数每簇密度，映射 0-4 条目分，簇分=5×条目分，总分 0-80。",
+    formula: "每簇：命中率(每千条) ≥10→4, ≥5→3, ≥2→2, ≥0.5→1；总分 = Σ 5×簇条目分 ∈ [0,80]",
+    read: "≥31 落在文献『probable 范围』——仅提示值得专业复核，不是诊断。回避簇高而闯入簇低=可能在用『不敢想』撑着，这种形态比总分更值得留意。",
+    validity: {
+      null_kind: "创伤词命中在各日均匀分布的多项式重采样，统计量=单日最大命中率",
+      ci_method: "删一天折刀（对总分重算）",
+      gate: "近60天消息 ≥100 且 天数 ≥14",
+      limits: "创伤反应常常不落在文字里（回避本身就是不提）；低分不用于安心。划界分来自英文量表验证，中文口语语义关联词表是粗代理。",
+    },
+  },
+  grief_trajectory: {
+    zh: "哀伤轨迹（思念率）",
+    group: "wellbeing",
+    origin: "PG-13 延长哀伤问卷（Prigerson et al. 2009, PLoS Med：思念核心症状必须 + 9 项中 ≥5 + 病程 ≥6 月；sens 1.00/spec 0.99）；中文 ICG 划界 48（中国大样本）",
+    intuition: "哀伤的核心症状是思念（yearning）。把『想TA/要是还在多好』类表达的密度按 30 天分块连成轨迹：急性期的浓是正常哀伤，方向比高度重要——健康的轨迹是下行（整合），6 个月后仍高位平台才提示延长哀伤风险。",
+    formula: "value = 全窗思念率(每千条)；stage：病程<6月→acute_or_recent；斜率显著向下→integrating；≥6月且近期率≥初始率一半→pgd_risk（强制复核）",
+    read: "先看 stage 再看数。pgd_risk 不等于诊断，等于『值得温和建议专业支持』；integrating 不需要任何干预。detail 里的功能损害词率（出不了门/干不下去）是 PGD 功能门槛的协变量。",
+    validity: {
+      null_kind: "消息文本跨块重排（保持块大小）后重算块间 OLS 斜率，双侧 p",
+      ci_method: "删一块折刀（delete-one-block jackknife）",
+      gate: "消息 ≥100 且 天数 ≥90 且 ≥3 个 30 天块",
+      limits: "已加在世护栏（v0.2.1）：单聊对端近90天有消息=在世，其会话里的『想你』是对活人的爱，计入 living_dm_love 不进思念率（用户指正催生——对配偶说的情话曾被误算成丧亲思念）。但群聊第三方语境的『想她』仍可能指活人，解读要结合人物档案。中国 PGD 患病率全球最高（疫情期间汇总 43%），这个通道的现实意义不小。",
+    },
+  },
+  state_trait_ratio: {
+    zh: "天气与气候（state-trait 稳定性差）",
+    group: "wellbeing",
+    origin: "客体恒常性（Mahler 分离-个体化；Klein 抑郁位）+ 依恋内部工作模型（Bowlby）+ 持续性联结（Klass, Silverman & Wortman 1996）；state-trait 情感时间尺度模型",
+    intuition: "情绪词是『天气』（state：秒-天级波动，事件驱动），依恋/思念词是『气候』（trait：内在客体表征，跨情境稳定，贯穿一生）。两者时间尺度差几个数量级。哀伤者说『我感觉不到TA了，是不是把TA弄丢了』，是把天气误读成气候在消失——这个指标量的就是两条通道的稳定性差。",
+    formula: "value = lag1自相关(依恋+思念日率序列) − lag1自相关(情绪日率序列)，∈ [−1,1]",
+    read: "value>0=气候比天气稳定（预期结构：感情表征是稳的，波动的是情绪状态）。value≤0 或 trait 自相关<0.1 → conflation_risk：气候呈现天气级波动——要么当事人正把神经反应误读为感情消失（回应层应启用『两件事拆分』话术：天气转阴不代表气候消失），要么语义关联代理太粗。两种情况都值得人工看原文。",
+    validity: {
+      null_kind: "消息文本跨日重排（保持日消息数）后重算差值，单侧 p=P(null≥obs)：观测差值大=结构真实",
+      ci_method: "删一天折刀（对差值重算）",
+      gate: "消息 ≥200 且 天数 ≥28；日率序列方差为 0 时诚实拒答（自相关无定义）",
+      limits: "语义关联词表把『爱/永远/心里/想你』当 trait 信号，会把恋爱期高频甜言误读成稳定表征；日率序列对消息量波动敏感。它是解读扶手，不是测量仪器。",
+    },
+    caveats: "这是『客体分离』干预的计算侧写：理论预期是 trait 通道天然比 state 通道稳定，若数据反过来，说明当事人的体验里两者被焊接了——这正是二次丧失恐慌（『感觉在消失=TA在消失=我在背叛』）的结构。",
+  },};
 
 /** 画像三层（特质 / 情感 / 成长）的方法学说明 */
 export const LAYER_SCIENCE: Record<"traits" | "affect" | "growth", MetricScience> = {
